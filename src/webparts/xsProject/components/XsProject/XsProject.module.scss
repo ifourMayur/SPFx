@@ -5,6 +5,18 @@
   color: var(--bodyText);
 }
 
+.appLayout {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
 .welcome {
   text-align: center;
 }

@@ -1,0 +1,14 @@
+.suppliers {
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.title {
+  margin: 0 0 0.5em;
+}
+
+.status {
+  padding: 0.5em 0.75em;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}

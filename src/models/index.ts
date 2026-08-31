@@ -9,4 +9,5 @@ export * from './ApiError';
 export * from './ApiResponse';
 export * from './Auth';
 export * from './Environment';
+export * from './Navigation';
 export * from './Project';

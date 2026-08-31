@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "xs-project-client-side-solution",
+    "id": "f45923f4-1fe4-4d28-8225-8a1597a389fd",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "XSProject description"
+      },
+      "longDescription": {
+        "default": "XSProject description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "xs-project Feature",
+        "description": "The feature that activates elements of the xs-project solution.",
+        "id": "9f7d9566-1303-4c55-beab-6f2adc2e607b",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/xs-project.sppkg"
+  }
+}

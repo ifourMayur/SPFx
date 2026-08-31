@@ -1,0 +1,19 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "useGulp": false,
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "24.19.0",
+    "sdksVersions": {},
+    "version": "1.23.2",
+    "libraryName": "xs-project",
+    "libraryId": "f45923f4-1fe4-4d28-8225-8a1597a389fd",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "XSProject",
+    "solutionShortDescription": "XSProject description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}

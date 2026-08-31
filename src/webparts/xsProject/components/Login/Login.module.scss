@@ -1,0 +1,85 @@
+.login {
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.title {
+  margin: 0 0 0.5em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 0.75em;
+  border-left: 4px solid transparent;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.pending {
+  border-left-color: "[theme:themePrimary, default: #0078d4]";
+}
+
+.success {
+  border-left-color: "[theme:successText, default: #107c10]";
+}
+
+.failure {
+  display: block;
+  border-left-color: "[theme:errorText, default: #a4262c]";
+  color: "[theme:errorText, default: #a4262c]";
+}
+
+.action {
+  margin-top: 0.5em;
+  padding: 0.4em 1em;
+  border: none;
+  cursor: pointer;
+  color: "[theme:white, default: #ffffff]";
+  background-color: "[theme:themePrimary, default: #0078d4]";
+
+  &:hover {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+}
+
+.response {
+  margin-top: 0.5em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+}
+
+.responseSummary {
+  padding: 0.4em 0.75em;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.responseBody {
+  // A base64 profile picture makes for a very long line, so the payload scrolls in place
+  // instead of stretching the web part out of shape.
+  max-height: 20em;
+  margin: 0;
+  padding: 0 0.75em 0.75em;
+  overflow: auto;
+  white-space: pre;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.85em;
+}
+
+.spinner {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternary, default: #d0d0d0]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

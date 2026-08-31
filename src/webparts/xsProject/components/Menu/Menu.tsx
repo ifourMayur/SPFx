@@ -14,6 +14,7 @@ const MENU_ITEMS: IMenuItem[] = [
   {
     key: 'project',
     label: 'Project',
+    view: 'projectList',
     children: [
       { key: 'projectDashboard', label: 'Dashboard', view: 'projectDashboard' },
       { key: 'projectDocument', label: 'Document', view: 'projectDocument' }
@@ -77,9 +78,8 @@ export default class Menu extends React.Component<IMenuProps, IMenuState> {
   private _renderItem(item: IMenuItem): React.ReactElement {
     const { activeView } = this.props;
     const hasChildren: boolean = !!item.children && item.children.length > 0;
-    const isActive: boolean = hasChildren
-      ? !!item.children && item.children.some((child: IMenuItem) => child.view === activeView)
-      : item.view === activeView;
+    const isActive: boolean = item.view === activeView
+      || (!!item.children && item.children.some((child: IMenuItem) => child.view === activeView));
     const isOpen: boolean = this.state.openKey === item.key;
 
     return (
@@ -89,9 +89,11 @@ export default class Menu extends React.Component<IMenuProps, IMenuState> {
           className={`${styles.item} ${isActive ? styles.active : ''}`}
           aria-haspopup={hasChildren ? 'menu' : undefined}
           aria-expanded={hasChildren ? isOpen : undefined}
-          aria-current={!hasChildren && isActive ? 'page' : undefined}
+          aria-current={item.view === activeView ? 'page' : undefined}
           data-key={item.key}
-          onClick={hasChildren ? this._onParentClick : this._onLeafClick}
+          data-view={item.view}
+          data-has-children={hasChildren ? 'true' : undefined}
+          onClick={this._onItemClick}
         >
           <span className={styles.itemLabel}>{item.label}</span>
           {hasChildren && <span className={styles.chevron} aria-hidden="true">{isOpen ? '▴' : '▾'}</span>}
@@ -125,13 +127,19 @@ export default class Menu extends React.Component<IMenuProps, IMenuState> {
     this.setState((state: IMenuState) => ({ isCollapsed: !state.isCollapsed }));
   };
 
-  private _onParentClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    const key: string | undefined = event.currentTarget.dataset.key;
-    this.setState((state: IMenuState) => ({ openKey: state.openKey === key ? undefined : key }));
-  };
+  // Handles every top-level item: navigates when the item (leaf or parent) has its own
+  // `view`, and toggles the submenu open/closed when it has `children` - both can apply to
+  // the same click, e.g. "Project" navigates to its own page and opens its submenu.
+  private _onItemClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    const { key, view, hasChildren } = event.currentTarget.dataset;
 
-  private _onLeafClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    this.props.onNavigate(event.currentTarget.dataset.view as AppView);
+    if (view) {
+      this.props.onNavigate(view as AppView);
+    }
+
+    if (hasChildren) {
+      this.setState((state: IMenuState) => ({ openKey: state.openKey === key ? undefined : key }));
+    }
   };
 
   private _onChildClick = (event: React.MouseEvent<HTMLButtonElement>): void => {

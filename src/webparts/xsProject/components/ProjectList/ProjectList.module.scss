@@ -1,0 +1,319 @@
+.projectList {
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1em;
+}
+
+.toggleField {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.toggleFieldEnd {
+  flex-direction: row-reverse;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 20px;
+
+  input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+
+    &:checked + .toggleTrack {
+      background-color: "[theme:themePrimary, default: #0078d4]";
+      background-color: var(--themePrimary);
+    }
+
+    &:checked + .toggleTrack::after {
+      transform: translateX(16px);
+    }
+  }
+}
+
+.toggleTrack {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background-color: "[theme:neutralTertiaryAlt, default: #c8c6c4]";
+  transition: background-color 0.15s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: "[theme:white, default: #ffffff]";
+    transition: transform 0.15s ease;
+  }
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75em;
+  font-size: 0.9em;
+}
+
+.pageSizeField select {
+  margin: 0 0.35em;
+}
+
+.searchField input {
+  margin-left: 0.35em;
+  padding: 0.25em 0.5em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+
+  th,
+  td {
+    padding: 0.6em 0.75em;
+    border-bottom: 1px solid "[theme:neutralLighter, default: #f3f2f1]";
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  thead th {
+    background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  }
+
+  tbody tr:hover {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+}
+
+.favoriteHeader {
+  width: 2.5em;
+}
+
+.optionHeader {
+  width: 3em;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+}
+
+.sortIcon {
+  font-size: 0.75em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.star {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  color: "[theme:themePrimary, default: #0078d4]";
+}
+
+.nameCell {
+  font-weight: 600;
+}
+
+.nameLink {
+  color: "[theme:link, default: #03787c]";
+  color: var(--link);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.statusCell {
+  text-align: center;
+}
+
+.circle {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid "[theme:neutralTertiary, default: #a19f9d]";
+  border-radius: 50%;
+}
+
+// Success/danger are fixed status colors (traffic-light semantics), not part of the
+// SharePoint theme palette, so they are not driven by "[theme:...]" tokens like the rest of
+// this file.
+.circleNone {
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+.circleSuccess {
+  border-color: #107c10;
+  background-color: #107c10;
+}
+
+.circleDanger {
+  border-color: #d13438;
+  background-color: #d13438;
+}
+
+.dash {
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.optionCell {
+  text-align: center;
+}
+
+.menuWrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.optionButton {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.15em 0.5em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 1.1em;
+
+  &:hover {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+}
+
+.rowMenu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 1;
+  min-width: 8em;
+  margin: 0.25em 0 0;
+  padding: 0.25em 0;
+  list-style: none;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:white, default: #ffffff]";
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 0.4em 0.9em;
+    border: none;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    color: "[theme:bodyText, default: #323130]";
+    color: var(--bodyText);
+    font: inherit;
+
+    &:hover {
+      background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    }
+  }
+}
+
+.empty {
+  padding: 1em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  text-align: center;
+}
+
+.compactList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+}
+
+.compactItem {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.6em 0.75em;
+  border-bottom: 1px solid "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.compactName {
+  font-weight: 600;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.85em;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+
+  button {
+    padding: 0.35em 0.8em;
+    border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+    border-radius: 2px;
+    background-color: "[theme:white, default: #ffffff]";
+    color: "[theme:bodyText, default: #323130]";
+    color: var(--bodyText);
+    cursor: pointer;
+    font: inherit;
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.5;
+    }
+
+    &:not(:disabled):hover {
+      background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    }
+  }
+}
+
+.pageIndicator {
+  padding: 0.35em 0.7em;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-weight: 600;
+}

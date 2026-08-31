@@ -7,14 +7,14 @@
  */
 
 /** A view the shared `Menu` component can navigate the app to. Add a member here to add a view. */
-export type AppView = 'projectDashboard' | 'projectDocument' | 'search' | 'suppliers';
+export type AppView = 'projectList' | 'projectDashboard' | 'projectDocument' | 'search' | 'suppliers';
 
 /**
  * A single entry in the shared `Menu`.
  *
  * A leaf item sets `view` and navigates directly. A parent item (SharePoint-style, e.g.
- * "Project") omits `view` and sets `children` instead - selecting it opens a submenu rather
- * than navigating on its own.
+ * "Project") sets `children` to open a submenu, and may also set its own `view` so clicking
+ * the parent itself navigates (in addition to opening the submenu) rather than only toggling it.
  */
 export interface IMenuItem {
   /** Identifies the item within the menu; equal to `view` for a leaf item. */

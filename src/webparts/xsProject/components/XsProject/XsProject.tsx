@@ -6,6 +6,7 @@ import { escape } from '@microsoft/sp-lodash-subset';
 import Login from '../Login/Login';
 import Menu from '../Menu/Menu';
 import Project from '../Project/Project';
+import ProjectList from '../ProjectList/ProjectList';
 import Document from '../Document/Document';
 import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
@@ -51,6 +52,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
           <div className={styles.appLayout}>
             <Menu activeView={activeView} onNavigate={this._onNavigate} />
             <div className={styles.content}>
+              {activeView === 'projectList' && <ProjectList />}
               {activeView === 'projectDashboard' && <Project projectService={projectService} />}
               {activeView === 'projectDocument' && <Document />}
               {activeView === 'search' && <Search />}

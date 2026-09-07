@@ -1,0 +1,159 @@
+/*
+ * Styled after the select2 multi-select the reference view loads for its `ListBoxFor`
+ * fields: a bordered control holding removable chips, with a searchable checkbox panel.
+ */
+.multiSelect {
+  position: relative;
+  min-width: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25em;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  width: 100%;
+  min-height: 32px;
+  padding: 3px 8px;
+  box-sizing: border-box;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+.placeholder {
+  flex: 1;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 4px 1px 6px;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  font-size: 12px;
+}
+
+.chipLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipRemove {
+  flex: none;
+  padding: 0 2px;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: "[theme:redDark, default: #a4262c]";
+  }
+}
+
+.caret {
+  flex: none;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.panel {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  margin-top: 2px;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.13);
+}
+
+.search {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-bottom: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+
+  &:focus {
+    outline: 1px solid "[theme:themePrimary, default: #0078d4]";
+  }
+}
+
+.list {
+  max-height: 190px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 14px;
+
+  &:hover {
+    background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  }
+
+  input {
+    flex: none;
+    margin: 0;
+  }
+}
+
+.empty,
+.emptyHint {
+  display: block;
+  padding: 6px 8px;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.875em;
+  font-style: italic;
+}
+
+.emptyHint {
+  padding: 0.25em 0 0 0;
+}

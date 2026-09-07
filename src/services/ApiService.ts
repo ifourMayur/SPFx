@@ -14,6 +14,7 @@ import {
 } from '../models/ApiResponse';
 import { IEnvironmentConfiguration } from '../models/Environment';
 import { IApiHttpClient } from './ApiHttpClient';
+import { IApiTokenStore, apiTokenStore } from './ApiTokenStore';
 
 /** Source name used for SPFx log entries emitted by the API layer. */
 const LOG_SOURCE: string = 'ApiService';
@@ -105,11 +106,23 @@ export interface IApiService {
 export class ApiService implements IApiService {
   private readonly _httpClient: IApiHttpClient;
   private readonly _overrides: IApiServiceConfiguration | undefined;
+  private readonly _tokenStore: IApiTokenStore;
   private _resolved: IResolvedApiConfiguration | undefined;
 
-  public constructor(httpClient: IApiHttpClient, overrides?: IApiServiceConfiguration) {
+  /**
+   * @param httpClient - transport used for every request.
+   * @param overrides - per-instance settings layered over `src/config/environment.ts`.
+   * @param tokenStore - source of the bearer token; defaults to the process-wide store
+   *   `LoginService` writes to, and is injectable so tests can supply their own.
+   */
+  public constructor(
+    httpClient: IApiHttpClient,
+    overrides?: IApiServiceConfiguration,
+    tokenStore: IApiTokenStore = apiTokenStore
+  ) {
     this._httpClient = httpClient;
     this._overrides = overrides;
+    this._tokenStore = tokenStore;
   }
 
   public get baseUrl(): string {
@@ -300,11 +313,25 @@ export class ApiService implements IApiService {
     return parts.join('&');
   }
 
+  /**
+   * Assembles the request headers, in increasing order of precedence: the defaults below,
+   * then the bearer token, then `defaultHeaders` from the configuration, then the
+   * per-call headers - so a caller can always override any of them.
+   */
   private _buildHeaders(headers: IRequestHeaders | undefined, hasBody: boolean): IRequestHeaders {
     const result: IRequestHeaders = { Accept: 'application/json' };
 
     if (hasBody) {
       result['Content-Type'] = 'application/json';
+    }
+
+    // Present on every call once the user has signed in: the Web API's controllers are
+    // `[Authorize]`d and read the application JWT from this header. Omitted entirely while
+    // no token is held, rather than sent empty, so an unauthenticated call fails as a
+    // clear 401 instead of as a malformed header.
+    const token: string | undefined = this._tokenStore.getToken();
+    if (token) {
+      result.Authorization = `Bearer ${token}`;
     }
 
     const defaults: IRequestHeaders | undefined = this._configuration.defaultHeaders;

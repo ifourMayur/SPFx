@@ -4,6 +4,7 @@ import { getEnvironment } from '../config/environment';
 import { ApiError } from '../models/ApiError';
 import { ILoginResponse, ISPFxLoginRequest } from '../models/Auth';
 import { IAccessTokenProvider } from './AccessTokenProvider';
+import { IApiTokenStore, apiTokenStore } from './ApiTokenStore';
 import { IApiService } from './ApiService';
 
 /** Source name used for SPFx log entries emitted by the sign-in flow. */
@@ -55,6 +56,7 @@ export class LoginService implements ILoginService {
   private readonly _tokenProvider: IAccessTokenProvider;
   private readonly _endpoint: string;
   private readonly _domainUrl: string;
+  private readonly _tokenStore: IApiTokenStore;
 
   /**
    * @param apiService - HTTP gateway used for the call.
@@ -63,17 +65,21 @@ export class LoginService implements ILoginService {
    *   environment configuration, and can be overridden in tests.
    * @param domainUrl - default `domainUrl` sent in the request body; defaults to
    *   `auth.domainUrl` from the environment configuration.
+   * @param tokenStore - where the application JWT is published on success; defaults to the
+   *   process-wide store `ApiService` reads when building request headers.
    */
   public constructor(
     apiService: IApiService,
     tokenProvider: IAccessTokenProvider,
     endpoint: string = getEnvironment().api.endpoints.authenticate,
-    domainUrl: string = getEnvironment().auth.domainUrl
+    domainUrl: string = getEnvironment().auth.domainUrl,
+    tokenStore: IApiTokenStore = apiTokenStore
   ) {
     this._apiService = apiService;
     this._tokenProvider = tokenProvider;
     this._endpoint = endpoint;
     this._domainUrl = domainUrl;
+    this._tokenStore = tokenStore;
   }
 
   /** Default `domainUrl` sent to the API, from `src/config/environment.ts`. */
@@ -112,6 +118,11 @@ export class LoginService implements ILoginService {
         url
       });
     }
+
+    // Published once, here, so every later call through `ApiService` carries
+    // `Authorization: Bearer <token>` without any component having to pass it along. Done
+    // only after the checks above, so a failed sign-in never leaves a stale token behind.
+    this._tokenStore.setToken(response.token);
 
     return response;
   }

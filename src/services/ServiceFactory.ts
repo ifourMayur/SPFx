@@ -6,6 +6,7 @@ import { AadAccessTokenProvider, IAccessTokenProvider } from './AccessTokenProvi
 import { AadApiHttpClient, AnonymousApiHttpClient, IApiHttpClient } from './ApiHttpClient';
 import { ApiService, IApiService, IResolvedApiConfiguration, resolveApiConfiguration } from './ApiService';
 import { ILoginService, LoginService } from './LoginService';
+import { ILookupService, LookupService } from './LookupService';
 import { IProjectService, ProjectService } from './ProjectService';
 
 /** All services available to the components, resolved as interfaces. */
@@ -13,6 +14,8 @@ export interface IServiceContainer {
   readonly apiService: IApiService;
   readonly loginService: ILoginService;
   readonly projectService: IProjectService;
+  /** Reference data the project form binds its dropdowns to. */
+  readonly lookupService: ILookupService;
 }
 
 /**
@@ -86,7 +89,8 @@ export class ServiceFactory {
         getEnvironment().api.endpoints.authenticate,
         ServiceFactory._resolveDomainUrl(context)
       ),
-      projectService: new ProjectService(apiService, getEnvironment().api.endpoints.projects)
+      projectService: new ProjectService(apiService, getEnvironment().api.endpoints.projects),
+      lookupService: new LookupService(apiService)
     };
   }
 

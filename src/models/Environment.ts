@@ -15,6 +15,18 @@ export interface IApiEndpoints {
   readonly projects: string;
   /** `AuthenticateController` route; the sign-in actions hang off it, e.g. `SPFxLogin`. */
   readonly authenticate: string;
+  /** `ProjectController` route (aliased `api/Building`); project CRUD and the folder cascade. */
+  readonly building: string;
+  /** `UsersController` route; `GetAllList` hangs off it. */
+  readonly users: string;
+  /** `ProjectTemplateController` route; `GetTemplateList` hangs off it. */
+  readonly projectTemplates: string;
+  /** `SpatialBreakdownController` route; `GetAllLookup` hangs off it. */
+  readonly spatialBreakdowns: string;
+  /** `TenderTemplateController` route; `GetTenderTemplateLookupItems` hangs off it. */
+  readonly tenderTemplates: string;
+  /** `IssuerController` route; `GetIssuerList` hangs off it - "suppliers" in this screen. */
+  readonly suppliers: string;
 }
 
 /** Everything the API layer needs to talk to the Web API in a given environment. */

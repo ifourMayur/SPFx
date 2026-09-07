@@ -1,32 +1,45 @@
 import * as React from 'react';
+import { HashRouter } from 'react-router-dom';
+
 import styles from './XsProject.module.scss';
 import type { IXsProjectProps } from './IXsProjectProps';
 import type { IXsProjectState } from './IXsProjectState';
 import { escape } from '@microsoft/sp-lodash-subset';
+import AppShell from './AppShell';
 import Login from '../Login/Login';
-import Menu from '../Menu/Menu';
-import Project from '../Project/Project';
-import ProjectList from '../ProjectList/ProjectList';
-import Document from '../Document/Document';
-import Search from '../Search/Search';
-import Suppliers from '../Suppliers/Suppliers';
 import welcomeDark from '../../assets/welcome-dark.png';
 import welcomeLight from '../../assets/welcome-light.png';
-import { AppView } from '../../../../models/Navigation';
+import { ILoginResponse } from '../../../../models/Auth';
+import { IBuildingForm, IProjectFormFeatures, toDomainGroup } from '../../../../models/Building';
+import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
+import { IProjectListRow, SAMPLE_PROJECT_ROWS, upsertProjectRow } from '../../../../models/ProjectListRow';
+
+/** `BuildingResource.msgAddProject` / `msgUpdateProject`, including their double spaces. */
+const SAVE_MESSAGES = {
+  added: 'Project  Added successfully!',
+  updated: 'Project  Updated successfully!'
+};
 
 /**
  * Root component rendered by `XsProjectWebPart`.
  *
- * Owns the authenticated/not-authenticated view state: the shared `Menu` and the pages it
- * navigates to are only ever rendered once `Login` reports a successful sign-in, using the
- * `onLoginSucceeded`/`onLoginFailed` callbacks `Login` already exposes rather than a second
- * authentication mechanism.
+ * Owns the authenticated/not-authenticated view state: the router, the shared `Menu` and
+ * the pages it navigates to are only ever rendered once `Login` reports a successful
+ * sign-in, using the `onLoginSucceeded`/`onLoginFailed` callbacks `Login` already exposes
+ * rather than a second authentication mechanism.
+ *
+ * It also owns the project rows and the forms saved during the session, because routing
+ * unmounts the page that would otherwise hold them - see `IXsProjectState`.
  */
 export default class XsProject extends React.Component<IXsProjectProps, IXsProjectState> {
   public constructor(props: IXsProjectProps) {
     super(props);
 
-    this.state = { isAuthenticated: false, activeView: 'projectDashboard' };
+    this.state = {
+      isAuthenticated: false,
+      rows: SAMPLE_PROJECT_ROWS,
+      savedForms: {}
+    };
   }
 
   public render(): React.ReactElement<IXsProjectProps> {
@@ -36,9 +49,11 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       environmentMessage,
       userDisplayName,
       projectService,
+      lookupService,
       loginService
     } = this.props;
-    const { isAuthenticated, activeView } = this.state;
+    const { isAuthenticated, login, rows, savedForms, notification } = this.state;
+    const userRoleId: number | undefined = login?.userRoleId;
 
     return (
       <section className={`${styles.xsProject}`}>
@@ -49,16 +64,25 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
         />
 
         {isAuthenticated && (
-          <div className={styles.appLayout}>
-            <Menu activeView={activeView} onNavigate={this._onNavigate} />
-            <div className={styles.content}>
-              {activeView === 'projectList' && <ProjectList />}
-              {activeView === 'projectDashboard' && <Project projectService={projectService} />}
-              {activeView === 'projectDocument' && <Document />}
-              {activeView === 'search' && <Search />}
-              {activeView === 'suppliers' && <Suppliers />}
-            </div>
-          </div>
+          // The app's routes live in the URL fragment: a SPFx web part is a guest on a
+          // SharePoint page whose path SharePoint itself owns and navigates.
+          <HashRouter>
+            <AppShell
+              projectService={projectService}
+              lookupService={lookupService}
+              rows={rows}
+              savedForms={savedForms}
+              features={this._getFeatures()}
+              clientId={login ? String(login.id) : ''}
+              clientName={login?.userName || userDisplayName}
+              canAddEdit={canAddEditProject(userRoleId)}
+              canOpenForm={canOpenProjectForm(userRoleId)}
+              notification={notification}
+              onSaveProject={this._onSaveProject}
+              onToggleFavorite={this._onToggleFavorite}
+              onDismissNotification={this._onDismissNotification}
+            />
+          </HashRouter>
         )}
 
         <div className={styles.welcome}>
@@ -87,17 +111,63 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
     );
   }
 
+  /**
+   * The reference view's server-side `@if` gates, resolved from the sign-in response.
+   *
+   * `domainGroup` decides whether the postcode is required and whether Spatial Breakdown
+   * and the ISO 19650 toggle appear. The fourth folder level corresponds to
+   * `ViewBag.IsGrandChildFolderEnabled`, which the Web API does not expose to this client
+   * yet, so it stays on to keep the whole cascade reviewable.
+   */
+  private _getFeatures(): IProjectFormFeatures {
+    return {
+      domainGroup: toDomainGroup(this.state.login?.domainGroup),
+      isGrandChildFolderEnabled: true
+    };
+  }
+
   // Assigned as properties so the `this` pointer is bound without a per-render closure,
   // matching the pattern `Login` itself uses for its own click handler.
-  private _onLoginSucceeded = (): void => {
-    this.setState({ isAuthenticated: true });
+  private _onLoginSucceeded = (response: ILoginResponse): void => {
+    this.setState({ isAuthenticated: true, login: response });
   };
 
   private _onLoginFailed = (): void => {
-    this.setState({ isAuthenticated: false });
+    this.setState({ isAuthenticated: false, login: undefined });
   };
 
-  private _onNavigate = (view: AppView): void => {
-    this.setState({ activeView: view });
+  /**
+   * Records a saved project.
+   *
+   * Async because this is where a `BuildingService.save()` call belongs: the form already
+   * awaits this promise, shows its saving state while it is pending, and reports a
+   * rejection as a form-level error. Nothing is sent anywhere today.
+   */
+  private _onSaveProject = async (form: IBuildingForm): Promise<void> => {
+    const isUpdate: boolean = form.id > 0;
+
+    this.setState((state: IXsProjectState) => {
+      const result = upsertProjectRow(state.rows, form);
+
+      return {
+        rows: result.rows,
+        // Stored under the id the row actually got, so a project created with `id: 0`
+        // can be reopened for editing under its new id.
+        savedForms: { ...state.savedForms, [result.id]: { ...form, id: result.id } },
+        notification: isUpdate ? SAVE_MESSAGES.updated : SAVE_MESSAGES.added
+      };
+    });
+  };
+
+  private _onToggleFavorite = (projectId: number): void => {
+    this.setState((state: IXsProjectState) => ({
+      rows: state.rows.map((row: IProjectListRow) =>
+        row.id === projectId ? { ...row, isFavorite: !row.isFavorite } : row
+      )
+    }));
+  };
+
+  private _onDismissNotification = (): void => {
+    this.setState({ notification: undefined });
   };
 }

@@ -1,8 +1,6 @@
-import { AppView } from '../../../../models/Navigation';
-
 export interface IMenuProps {
-  /** View currently shown, used to highlight the matching menu item. */
-  activeView: AppView;
-  /** Called with the view the user selected. */
-  onNavigate: (view: AppView) => void;
+  /** Path currently shown, used to highlight the matching menu item. */
+  activePath: string;
+  /** Called with the path the user selected. */
+  onNavigate: (path: string) => void;
 }

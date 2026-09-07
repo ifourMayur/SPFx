@@ -1,27 +1,10 @@
 import * as React from 'react';
 import styles from './ProjectList.module.scss';
-
-/** Traffic-light status shown as a circle for a single project phase. */
-type PhaseStatus = 'none' | 'success' | 'danger';
-
-/** The five phase columns every project always shows a circle for. */
-type PhaseKey = 'administratie' | 'voorbereiding' | 'ontwerp' | 'uitvoering' | 'revisie';
+import type { IProjectListProps } from './IProjectListProps';
+import { IProjectListRow, PhaseKey, PhaseStatus } from '../../../../models/ProjectListRow';
 
 /** Columns the table can be sorted by. */
 type SortKey = 'name' | PhaseKey | 'maintenance';
-
-interface IProjectListRow {
-  id: number;
-  name: string;
-  isFavorite: boolean;
-  administratie: PhaseStatus;
-  voorbereiding: PhaseStatus;
-  ontwerp: PhaseStatus;
-  uitvoering: PhaseStatus;
-  revisie: PhaseStatus;
-  /** Undefined renders as "-": most projects have not reached their maintenance phase yet. */
-  maintenance?: PhaseStatus;
-}
 
 const PHASE_COLUMNS: Array<{ key: PhaseKey; label: string }> = [
   { key: 'administratie', label: 'Administratie' },
@@ -35,41 +18,16 @@ const PAGE_SIZE_OPTIONS: number[] = [10, 25, 50, 100];
 
 const SORT_RANK: Record<PhaseStatus, number> = { none: 0, success: 1, danger: 2 };
 
-/**
- * Sample rows for the project overview table, matching the reference design.
- *
- * `IProjectService` does not expose per-phase status yet, so this component renders static
- * sample data rather than a real project list - replace with a service call (following the
- * `Project`/`ProjectService` pattern) once the Web API exposes that data.
- */
-const SAMPLE_ROWS: IProjectListRow[] = [
-  { id: 1, name: 'Website Redesign', isFavorite: false, administratie: 'success', voorbereiding: 'success', ontwerp: 'success', uitvoering: 'none', revisie: 'none' },
-  { id: 2, name: 'Office Renovation Plan', isFavorite: false, administratie: 'success', voorbereiding: 'danger', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 3, name: 'Tender Response A12', isFavorite: true, administratie: 'none', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 4, name: 'Client Onboarding Portal', isFavorite: false, administratie: 'success', voorbereiding: 'success', ontwerp: 'success', uitvoering: 'success', revisie: 'none' },
-  { id: 5, name: 'Infrastructure Upgrade', isFavorite: false, administratie: 'success', voorbereiding: 'success', ontwerp: 'danger', uitvoering: 'none', revisie: 'none', maintenance: 'danger' },
-  { id: 6, name: 'Marketing Campaign Q3', isFavorite: false, administratie: 'none', voorbereiding: 'none', ontwerp: 'success', uitvoering: 'none', revisie: 'none' },
-  { id: 7, name: 'Data Migration Project', isFavorite: false, administratie: 'success', voorbereiding: 'success', ontwerp: 'success', uitvoering: 'success', revisie: 'success', maintenance: 'success' },
-  { id: 8, name: 'Vendor Contract Review', isFavorite: true, administratie: 'danger', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 9, name: 'Product Launch Roadmap', isFavorite: false, administratie: 'success', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 10, name: 'Annual Compliance Audit', isFavorite: false, administratie: 'success', voorbereiding: 'success', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 11, name: 'New project', isFavorite: false, administratie: 'none', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 12, name: 'new projects', isFavorite: false, administratie: 'none', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 13, name: 'NewProject create folder', isFavorite: false, administratie: 'none', voorbereiding: 'none', ontwerp: 'none', uitvoering: 'none', revisie: 'none' },
-  { id: 14, name: 'Project by dev test', isFavorite: false, administratie: 'success', voorbereiding: 'none', ontwerp: 'danger', uitvoering: 'success', revisie: 'success', maintenance: 'danger' },
-  { id: 15, name: 'SharePointSite Project', isFavorite: false, administratie: 'danger', voorbereiding: 'danger', ontwerp: 'danger', uitvoering: 'danger', revisie: 'danger' },
-  { id: 16, name: 'Tender project', isFavorite: false, administratie: 'none', voorbereiding: 'none', ontwerp: 'danger', uitvoering: 'none', revisie: 'none' },
-  { id: 17, name: 'Test document', isFavorite: false, administratie: 'danger', voorbereiding: 'none', ontwerp: 'success', uitvoering: 'danger', revisie: 'danger' }
-];
-
 const CIRCLE_CLASS_NAME: Record<PhaseStatus, string> = {
   none: styles.circleNone,
   success: styles.circleSuccess,
   danger: styles.circleDanger
 };
 
+/** How long a success message stays on screen, matching the reference's `autoHideDelay`. */
+const NOTIFICATION_TIMEOUT_MS: number = 3000;
+
 interface IProjectListState {
-  rows: IProjectListRow[];
   search: string;
   pageSize: number;
   currentPage: number;
@@ -84,13 +42,19 @@ interface IProjectListState {
  * Project overview table opened from the top-level "Project" item in the shared `Menu`,
  * matching the reference DataTables-style design: favorites/list-view toggles, a
  * show-N-entries and search control, a sortable phase-status table, and pagination.
+ *
+ * The rows themselves come in as a prop - `XsProject` owns them so they survive
+ * navigating to the add/edit form and back. Everything this component keeps in state is
+ * presentation only: the search term, sort, page and which row menu is open.
  */
-export default class ProjectList extends React.Component<Record<string, never>, IProjectListState> {
-  public constructor(props: Record<string, never>) {
+export default class ProjectList extends React.Component<IProjectListProps, IProjectListState> {
+  /** Pending auto-dismiss of the success message. */
+  private _notificationTimer: number | undefined;
+
+  public constructor(props: IProjectListProps) {
     super(props);
 
     this.state = {
-      rows: SAMPLE_ROWS,
       search: '',
       pageSize: PAGE_SIZE_OPTIONS[0],
       currentPage: 1,
@@ -102,13 +66,22 @@ export default class ProjectList extends React.Component<Record<string, never>, 
 
   public componentDidMount(): void {
     document.addEventListener('mousedown', this._onDocumentMouseDown);
+    this._scheduleNotificationDismiss();
+  }
+
+  public componentDidUpdate(previousProps: IProjectListProps): void {
+    if (previousProps.notification !== this.props.notification) {
+      this._scheduleNotificationDismiss();
+    }
   }
 
   public componentWillUnmount(): void {
     document.removeEventListener('mousedown', this._onDocumentMouseDown);
+    this._clearNotificationTimer();
   }
 
-  public render(): React.ReactElement {
+  public render(): React.ReactElement<IProjectListProps> {
+    const { canAddEdit, notification } = this.props;
     const { search, pageSize, showFavoritesOnly, isListView } = this.state;
     const filteredRows: IProjectListRow[] = this._getFilteredRows();
     const sortedRows: IProjectListRow[] = this._getSortedRows(filteredRows);
@@ -122,6 +95,29 @@ export default class ProjectList extends React.Component<Record<string, never>, 
 
     return (
       <section className={styles.projectList}>
+        {notification && (
+          <div className={styles.notification} role="status" aria-live="polite">
+            <span>{notification}</span>
+            <button
+              type="button"
+              className={styles.notificationClose}
+              aria-label="Dismiss"
+              onClick={this._onDismissNotification}
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {/* Gated exactly as the reference gates it: `@if (ViewBag.AddEditAccessRights)`. */}
+        {canAddEdit && (
+          <div className={styles.commandBar}>
+            <button type="button" className={styles.addButton} onClick={this.props.onAddProject}>
+              + Add Project
+            </button>
+          </div>
+        )}
+
         <div className={styles.toolbar}>
           <label className={styles.toggleField}>
             <span className={styles.toggle}>
@@ -284,7 +280,15 @@ export default class ProjectList extends React.Component<Record<string, never>, 
             {openMenuRowId === row.id && (
               <ul className={styles.rowMenu} role="menu">
                 <li role="none"><button type="button" role="menuitem" onClick={this._onCloseRowMenu}>Openen</button></li>
-                <li role="none"><button type="button" role="menuitem" onClick={this._onCloseRowMenu}>Bewerken</button></li>
+                {/* Same gate as the Add button: the reference wraps its Edit link in
+                    `@if (ViewBag.AddEditAccessRights)` too. */}
+                {this.props.canAddEdit && (
+                  <li role="none">
+                    <button type="button" role="menuitem" data-id={row.id} onClick={this._onEditRow}>
+                      Bewerken
+                    </button>
+                  </li>
+                )}
                 <li role="none"><button type="button" role="menuitem" onClick={this._onCloseRowMenu}>Verwijderen</button></li>
               </ul>
             )}
@@ -295,10 +299,10 @@ export default class ProjectList extends React.Component<Record<string, never>, 
   }
 
   private _getFilteredRows(): IProjectListRow[] {
-    const { rows, search, showFavoritesOnly } = this.state;
+    const { search, showFavoritesOnly } = this.state;
     const term: string = search.trim().toLowerCase();
 
-    return rows.filter((row: IProjectListRow) => {
+    return this.props.rows.filter((row: IProjectListRow) => {
       if (showFavoritesOnly && !row.isFavorite) {
         return false;
       }
@@ -343,6 +347,27 @@ export default class ProjectList extends React.Component<Record<string, never>, 
     return SORT_RANK[row[key]];
   }
 
+  /** Restarts the auto-dismiss countdown for the current success message. */
+  private _scheduleNotificationDismiss(): void {
+    this._clearNotificationTimer();
+
+    if (!this.props.notification) {
+      return;
+    }
+
+    this._notificationTimer = setTimeout((): void => {
+      this._notificationTimer = undefined;
+      this.props.onDismissNotification();
+    }, NOTIFICATION_TIMEOUT_MS) as unknown as number;
+  }
+
+  private _clearNotificationTimer(): void {
+    if (this._notificationTimer !== undefined) {
+      clearTimeout(this._notificationTimer);
+      this._notificationTimer = undefined;
+    }
+  }
+
   // Assigned as properties so the `this` pointer is bound without a per-render closure,
   // matching the pattern `Login`/`Menu` use for their own click handlers.
   private _onSearchChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
@@ -373,11 +398,19 @@ export default class ProjectList extends React.Component<Record<string, never>, 
   };
 
   private _onToggleFavorite = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    this.props.onToggleFavorite(Number(event.currentTarget.dataset.id));
+  };
+
+  private _onEditRow = (event: React.MouseEvent<HTMLButtonElement>): void => {
     const id: number = Number(event.currentTarget.dataset.id);
 
-    this.setState((state: IProjectListState) => ({
-      rows: state.rows.map((row: IProjectListRow) => row.id === id ? { ...row, isFavorite: !row.isFavorite } : row)
-    }));
+    this.setState({ openMenuRowId: undefined });
+    this.props.onEditProject(id);
+  };
+
+  private _onDismissNotification = (): void => {
+    this._clearNotificationTimer();
+    this.props.onDismissNotification();
   };
 
   private _onPreviousPage = (): void => {

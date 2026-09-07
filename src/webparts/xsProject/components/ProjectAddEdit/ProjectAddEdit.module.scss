@@ -1,0 +1,360 @@
+/*
+ * Ports the reference view's Bootstrap layout without Bootstrap: `row formProject` with
+ * two `col-lg-6` children becomes a two-column grid that collapses to one column when the
+ * web part is narrow, and `btn-success` / `text-danger` / `required` get their own classes
+ * here rather than borrowing the framework's.
+ */
+.projectAddEdit {
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+  font-size: 14px;
+}
+
+.header {
+  margin-bottom: 1em;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 600;
+}
+
+.titleRule {
+  margin: 0.3em 0 1em 0;
+  border: 0;
+  border-top: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+}
+
+/* `panel panel-default > panel-body` in the reference. */
+.panel {
+  padding: 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+.notice {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:themePrimary, default: #0078d4]";
+  background-color: "[theme:themeLighterAlt, default: #eff6fc]";
+}
+
+.accessDenied {
+  padding: 1.5em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+/* One `row formProject`: two fields side by side, stacking on a narrow web part. */
+.row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1.5em;
+  margin-bottom: 0.75em;
+
+  @media (max-width: 640px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.field {
+  min-width: 0;
+  margin-bottom: 0.75em;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25em;
+}
+
+/* `<span class="required">*</span>` */
+.required {
+  color: "[theme:redDark, default: #a4262c]";
+  font-weight: 600;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+
+  &:focus {
+    outline: 1px solid "[theme:themePrimary, default: #0078d4]";
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    color: "[theme:neutralSecondary, default: #605e5c]";
+    cursor: not-allowed;
+  }
+}
+
+.inputInvalid {
+  border-color: "[theme:redDark, default: #a4262c]";
+}
+
+/* `<span class="text-danger">` */
+.fieldError {
+  display: block;
+  margin-top: 0.25em;
+  color: "[theme:redDark, default: #a4262c]";
+  font-size: 0.875em;
+}
+
+.formError {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:redDark, default: #a4262c]";
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  color: "[theme:redDark, default: #a4262c]";
+}
+
+/* `<div class="form-label">` above each section, with its `<hr />`. */
+.sectionLabel {
+  font-weight: 600;
+}
+
+.sectionRule {
+  margin: 0.3em 0 0.75em 0;
+  border: 0;
+  border-top: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+}
+
+.momSection {
+  margin-top: 0.5em;
+}
+
+/* Image upload button, standing in for `.imgProfile` / `.imageProfile`. */
+.imageRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1em;
+}
+
+.imageButton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  width: 120px;
+  height: 120px;
+  padding: 0.5em;
+  box-sizing: border-box;
+  border: 1px dashed "[theme:neutralTertiary, default: #a19f9d]";
+  border-radius: 50%;
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  cursor: pointer;
+  overflow: hidden;
+  text-align: center;
+
+  &:hover {
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+}
+
+.imagePreview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.imagePlaceholder {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.imageCaption {
+  font-size: 11px;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+/* Reuses the switch styling `ProjectList` already establishes for its own toggles. */
+.toggleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.toggleField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+  cursor: pointer;
+}
+
+.toggleLabel {
+  font-size: 0.9em;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 20px;
+
+  input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+
+    &:checked + .toggleTrack {
+      background-color: "[theme:themePrimary, default: #0078d4]";
+    }
+
+    &:checked + .toggleTrack::after {
+      transform: translateX(16px);
+    }
+
+    &:disabled + .toggleTrack {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.toggleTrack {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background-color: "[theme:neutralTertiaryAlt, default: #c8c6c4]";
+  transition: background-color 0.15s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: "[theme:white, default: #ffffff]";
+    transition: transform 0.15s ease;
+  }
+}
+
+.tenderField {
+  margin-top: 0.5em;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75em;
+  margin-top: 1em;
+}
+
+/* `btn btn-success` */
+// Colour comes from the theme-token syntax alone. Do NOT add a
+// `background-color: var(--themePrimary)` line after it: the web part only ever sets
+// --bodyText, --link and --linkHovered, so that var() is undefined, which makes the
+// declaration invalid at computed-value time and drops the background to transparent
+// (its initial value) instead of falling back to the line above. That is what made this
+// button invisible until :hover supplied a real colour.
+.primaryButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+.secondaryButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+
+  &:disabled {
+    color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+/* Keeps the file input operable by keyboard and screen readers while the styled label
+   above it provides the visuals. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shown while the dropdown data is being fetched, in place of the form. */
+.loadingState {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1.5em 0;
+  justify-content: center;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: projectFormSpin 0.8s linear infinite;
+}
+
+@keyframes projectFormSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Distinguishes "the API returned no options" from "this control is broken". */
+.emptyHint {
+  display: block;
+  margin-top: 0.25em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.875em;
+  font-style: italic;
+}

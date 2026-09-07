@@ -39,7 +39,6 @@
 
     &:checked + .toggleTrack {
       background-color: "[theme:themePrimary, default: #0078d4]";
-      background-color: var(--themePrimary);
     }
 
     &:checked + .toggleTrack::after {
@@ -316,4 +315,57 @@
   background-color: "[theme:themePrimary, default: #0078d4]";
   color: "[theme:white, default: #ffffff]";
   font-weight: 600;
+}
+
+/* Command bar above the table, holding the Add button - `btn btn-success mb-3` in the
+   reference's Building/Index view. */
+.commandBar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1em;
+}
+
+// Colour comes from the theme-token syntax alone. Do NOT add a
+// `background-color: var(--themePrimary)` line after it: the web part only ever sets
+// --bodyText, --link and --linkHovered, so that var() is undefined, which makes the
+// declaration invalid at computed-value time and drops the background to transparent
+// (its initial value) instead of falling back to the line above. That is what made this
+// button invisible until :hover supplied a real colour.
+.addButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+}
+
+/* Stands in for the reference's `$.notify(...)` toast after a save. */
+.notification {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:greenDark, default: #107c10]";
+  background-color: "[theme:neutralLighterAlt, default: #f3f9f1]";
+}
+
+.notificationClose {
+  flex: none;
+  padding: 0 0.35em;
+  border: 0;
+  background: none;
+  color: "[theme:bodyText, default: #323130]";
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
 }

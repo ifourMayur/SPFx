@@ -1,7 +1,23 @@
 # AddEditProject component — design
 
 Date: 2026-09-03
-Status: approved, ready for implementation planning
+Status: **SUPERSEDED on 2026-09-07** by `2026-09-07-projectaddedit-design.md`. Kept for
+the reference analysis below, which is still accurate. Do not implement from this file.
+
+Why it was superseded: a later request narrowed and redirected the scope, contradicting
+four of this spec's decisions.
+
+| This spec chose | The implemented design chose |
+| --- | --- |
+| Full fidelity, including ED Controls tag rows and KYP planning | ED Controls, KYP and SharePoint Site URL excluded as integration-specific |
+| Component named `AddEditProject`, with `TagRow` | Named `ProjectAddEdit`; no `TagRow` (it existed only for ED Controls) |
+| Navigation by `AppView` state, with a `VIEWS_WITH_OWN_MENU` layout guard | `react-router-dom` hash routes; the shared `Menu` renders once outside `<Routes>`, so the guard is unnecessary |
+| Menu entry for the form | No menu entry: reaching the form is permission-gated, from the listing button only |
+
+One factual error in this spec, corrected in the implementation: it states that `momFolder`
+"needs a `folderId` when `isAddMomPdf`". The reference does not enforce that -
+`getAllMOMData` (line 2431) sets `allValid = true` and never clears it, and
+`#MOMfolderNotSelect` is never written to.
 
 ## Goal
 

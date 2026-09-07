@@ -1,0 +1,85 @@
+/*
+ * Ports the reference view's inline `.folderCascadeGroup` rules (AddEdit.cshtml lines
+ * 28-46): a light grey panel with a 6px radius, holding small uppercase labels above each
+ * dropdown.
+ */
+.folderCascadeGroup {
+  padding: 12px 12px 4px 12px;
+  margin-bottom: 10px;
+  border: 1px solid "[theme:neutralLight, default: #e3e6ea]";
+  border-radius: 6px;
+  background-color: "[theme:neutralLighterAlt, default: #f8f9fa]";
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  /* `.folderCascadeGroup .row + .row { margin-top: 8px; }` in the reference. */
+  & + .row {
+    margin-top: 8px;
+  }
+}
+
+.field {
+  /* Four levels per row on a wide panel, wrapping to fewer as the web part narrows. */
+  flex: 1 1 180px;
+  min-width: 0;
+  margin-bottom: 8px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: "[theme:neutralSecondary, default: #6c757d]";
+}
+
+.select {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+
+  &:focus {
+    outline: 1px solid "[theme:themePrimary, default: #0078d4]";
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+/* Ports `select.dropdown-loading` from the reference view's inline <style>: a shimmering,
+   greyed-out dropdown while its options are being fetched. */
+.loading {
+  color: "[theme:neutralTertiary, default: #8a8a8a]";
+  font-style: italic;
+  cursor: progress;
+  background-image: linear-gradient(90deg, #eceff1 25%, #f5f6f7 37%, #eceff1 63%);
+  background-size: 400% 100%;
+  animation: dropdownLoadingShimmer 1.2s ease infinite;
+}
+
+@keyframes dropdownLoadingShimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}

@@ -28,10 +28,24 @@ import {
  * environment; no other file needs to change.
  */
 
-/** Web API routes. Shared by every environment because the API surface is the same. */
+/**
+ * Web API controller routes. Shared by every environment because the API surface is the
+ * same; only `baseUrl` differs.
+ *
+ * These are controller routes, not complete endpoints: a service appends the action it
+ * needs (`Authenticate` + `SPFxLogin`, `Users` + `GetAllList`) and `ApiService.resolveUrl`
+ * prefixes `baseUrl`. Keeping the controller here means a renamed route is a one-line
+ * change in this file rather than a hunt through the services.
+ */
 const ENDPOINTS: IApiEndpoints = {
   projects: 'projects',
-  authenticate: 'Authenticate'
+  authenticate: 'Authenticate',
+  building: 'Building',
+  users: 'Users',
+  projectTemplates: 'ProjectTemplate',
+  spatialBreakdowns: 'SpatialBreakdown',
+  tenderTemplates: 'TenderTemplate',
+  suppliers: 'Issuer'
 };
 
 /**
@@ -75,6 +89,13 @@ const ENVIRONMENTS: { [name in EnvironmentName]: IEnvironmentConfiguration } = {
   local: {
     name: 'local',
     api: {
+      // Matches BMDesk.API's **IIS Express** profile (`sslPort: 44396` in its
+      // launchSettings.json), which is also the address its own appsettings.json records.
+      // Its other profile - the one `dotnet run` and the "project" launch option use -
+      // listens on https://localhost:5001 instead, and nothing here would reach it. If the
+      // API is started that way, either switch to IIS Express or put
+      // `https://localhost:5001/api` in the web part's "API base URL" property, which
+      // overrides this without a rebuild.
       baseUrl: 'https://localhost:44396/api',
       resourceUri: undefined,
       requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,

@@ -48,6 +48,35 @@ interface IRootFolderResponse {
 }
 
 /**
+ * The part of an `SP.Folder` this service reads.
+ *
+ * `UniqueId` is asked for by name on the existence check but not on the create: it is one
+ * of `SP.Folder`'s default properties, so `AddUsingPath` answers with it already, and
+ * adding a `$select` to a method call is a way to break the create for no gain.
+ */
+interface IFolderResponse {
+  UniqueId?: string;
+}
+
+/**
+ * The part of a `driveItem` this service reads, from the site's own drive API.
+ *
+ * Graph-shaped rather than SharePoint-shaped, so `id` here is camelCase where `UniqueId`
+ * above is not - the two responses come from two different services.
+ */
+interface IDriveItemResponse {
+  id?: string;
+}
+
+/** What creating (or finding) one folder produced. */
+interface ICreatedFolder {
+  /** `true` when this call created it, `false` when it was already there. */
+  wasCreated: boolean;
+  /** SharePoint's `UniqueId`, or `''` when it answered without one. */
+  uniqueId: string;
+}
+
+/**
  * Escapes a server-relative path for use inside an OData string literal in a URL.
  *
  * Two separate encodings are at work. A single quote inside an OData literal is escaped by
@@ -73,15 +102,17 @@ function toSiteOrigin(siteUrl: string): string {
   return hostEnd < 0 ? siteUrl : siteUrl.substring(0, hostEnd);
 }
 
+/** A path with each segment percent-encoded and the separators left alone. */
+function toEncodedPath(path: string): string {
+  return path
+    .split('/')
+    .map((segment: string): string => encodeURIComponent(segment))
+    .join('/');
+}
+
 /** A server-relative path turned into a URL a browser can open, segment by segment. */
 function toFolderUrl(origin: string, serverRelativePath: string): string {
-  return (
-    origin +
-    serverRelativePath
-      .split('/')
-      .map((segment: string): string => encodeURIComponent(segment))
-      .join('/')
-  );
+  return origin + toEncodedPath(serverRelativePath);
 }
 
 /** Default {@link ISharePointFolderService}, built on `ISpHttpClient`. */
@@ -104,6 +135,8 @@ export class SharePointFolderService implements ISharePointFolderService {
 
     const result: IFolderProvisionResult = {
       rootUrl: paths.length > 0 ? toFolderUrl(origin, `${libraryRoot}/${paths[0]}`) : '',
+      rootId: '',
+      folders: [],
       created: [],
       skipped: [],
       failed: []
@@ -123,8 +156,28 @@ export class SharePointFolderService implements ISharePointFolderService {
       }
 
       try {
-        const wasCreated: boolean = await this._createFolder(siteUrl, `${libraryRoot}/${path}`);
-        (wasCreated ? result.created : result.skipped).push(path);
+        const created: ICreatedFolder = await this._createFolder(siteUrl, `${libraryRoot}/${path}`);
+        (created.wasCreated ? result.created : result.skipped).push(path);
+
+        // Asked for once the folder is known to exist, whether this run made it or found
+        // it: a retry after a partial failure has to be able to report the ids of folders
+        // an earlier run created, and those are skips the second time round.
+        const driveItemId: string = await this._readDriveItemId(siteUrl, path);
+
+        result.folders.push({
+          name: path.split('/').slice(-1)[0],
+          path,
+          id: driveItemId,
+          uniqueId: created.uniqueId,
+          url: toFolderUrl(origin, `${libraryRoot}/${path}`),
+          wasCreated: created.wasCreated
+        });
+
+        // `planFolderTree` always plans the project's own root folder first, so the first
+        // path is the one the Web API knows the project's folder tree by.
+        if (index === 0) {
+          result.rootId = driveItemId;
+        }
       } catch (error) {
         result.failed.push({
           path,
@@ -170,34 +223,91 @@ export class SharePointFolderService implements ISharePointFolderService {
    * folder a skip instead of an error - and it means a partly-failed run can be retried by
    * saving again.
    *
-   * @returns `true` when this call created the folder, `false` when it already existed.
+   * @returns whether this call created the folder, and the `UniqueId` SharePoint holds it
+   *   under - which is **not** the id Graph addresses it by; see {@link _readDriveItemId}.
    */
-  private async _createFolder(siteUrl: string, serverRelativePath: string): Promise<boolean> {
+  private async _createFolder(siteUrl: string, serverRelativePath: string): Promise<ICreatedFolder> {
     try {
-      await this._client.postJson<unknown>(
+      const folder: IFolderResponse = await this._client.postJson<IFolderResponse>(
         `${siteUrl}/_api/web/folders/AddUsingPath(DecodedUrl='${toPathLiteral(serverRelativePath)}')`
       );
 
-      return true;
+      return { wasCreated: true, uniqueId: (folder?.UniqueId || '').trim() };
     } catch (error) {
-      if (await this._exists(siteUrl, serverRelativePath)) {
-        return false;
+      const existing: IFolderResponse | undefined = await this._readFolder(siteUrl, serverRelativePath);
+
+      if (existing) {
+        return { wasCreated: false, uniqueId: (existing.UniqueId || '').trim() };
       }
 
       throw error;
     }
   }
 
-  /** Whether a folder is there, used only to interpret a failed create. */
-  private async _exists(siteUrl: string, serverRelativePath: string): Promise<boolean> {
+  /**
+   * Reads a folder, used to interpret a failed create.
+   *
+   * Its answer carries the folder's id as well as its existence, which is what lets a
+   * folder that was already there still be reported to the Web API - the case a retry after
+   * a partial failure runs into, where the ids that matter belong to folders this run did
+   * not create.
+   *
+   * @returns the folder, or `undefined` when it is not there.
+   */
+  private async _readFolder(
+    siteUrl: string,
+    serverRelativePath: string
+  ): Promise<IFolderResponse | undefined> {
     try {
-      await this._client.getJson<unknown>(
-        `${siteUrl}/_api/web/GetFolderByServerRelativePath(DecodedUrl='${toPathLiteral(serverRelativePath)}')?$select=Exists`
+      return await this._client.getJson<IFolderResponse>(
+        `${siteUrl}/_api/web/GetFolderByServerRelativePath(DecodedUrl='${toPathLiteral(serverRelativePath)}')?$select=Exists,UniqueId`
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The `driveItem.id` Graph addresses a folder by, read from the site's own drive API.
+   *
+   * `AddUsingPath` answers with SharePoint's `UniqueId`, and that GUID is useless to the
+   * Web API: it reaches these folders through Graph with app-only credentials, which
+   * addresses items by an opaque drive-scoped id (`01VL4HET...`). The two are separate
+   * identifiers rather than two encodings of one value, so this has to be looked up.
+   *
+   * `_api/v2.0` is the same drive API Graph serves, hosted by the site itself, so
+   * `ISpHttpClient` can call it as the signed-in user - no app registration, no Graph token
+   * and no tenant-admin consent, which is the property that makes every other call in this
+   * service deployable to a new tenant unchanged. `_api/v2.0/drive` is the site's default
+   * document library, the same one {@link _resolveLibraryRoot} resolves, so the planned
+   * paths address it untranslated.
+   *
+   * @returns the id, or `''` when it could not be read. Deliberately not an error: the
+   *   folder itself exists by the time this runs, so failing here would report a folder
+   *   that is genuinely there as one that is not. An empty id instead leaves the folder out
+   *   of what is reported to the Web API.
+   */
+  private async _readDriveItemId(siteUrl: string, path: string): Promise<string> {
+    try {
+      const item: IDriveItemResponse = await this._client.getJson<IDriveItemResponse>(
+        `${siteUrl}/_api/v2.0/drive/root:/${toEncodedPath(path)}`
+      );
+      const id: string = (item?.id || '').trim();
+
+      if (!id) {
+        Log.warn(LOG_SOURCE, `${path} was created, but the drive API reported no id for it.`);
+      }
+
+      return id;
+    } catch (error) {
+      Log.warn(
+        LOG_SOURCE,
+        `${path} was created, but its drive API id could not be read, so it will not be reported: ${
+          error instanceof Error ? error.message : 'the request failed'
+        }`
       );
 
-      return true;
-    } catch {
-      return false;
+      return '';
     }
   }
 

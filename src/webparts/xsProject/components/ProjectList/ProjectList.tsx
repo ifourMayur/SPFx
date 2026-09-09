@@ -2,6 +2,11 @@ import * as React from 'react';
 import styles from './ProjectList.module.scss';
 import type { IProjectListProps } from './IProjectListProps';
 import { IProjectListRow, PhaseKey, PhaseStatus } from '../../../../models/ProjectListRow';
+import {
+  IDocumentStorageResult,
+  IFolderIdRow,
+  toFolderIdRows
+} from '../../../../models/DocumentStorage';
 
 /** Columns the table can be sorted by. */
 type SortKey = 'name' | PhaseKey | 'maintenance';
@@ -81,7 +86,7 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
   }
 
   public render(): React.ReactElement<IProjectListProps> {
-    const { canAddEdit, notification } = this.props;
+    const { canAddEdit, notification, documentStorage } = this.props;
     const { search, pageSize, showFavoritesOnly, isListView } = this.state;
     const filteredRows: IProjectListRow[] = this._getFilteredRows();
     const sortedRows: IProjectListRow[] = this._getSortedRows(filteredRows);
@@ -108,6 +113,8 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
             </button>
           </div>
         )}
+
+        {documentStorage && ProjectList._renderFolderIds(documentStorage)}
 
         {/* Gated exactly as the reference gates it: `@if (ViewBag.AddEditAccessRights)`. */}
         {canAddEdit && (
@@ -164,6 +171,43 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
           </div>
         </div>
       </section>
+    );
+  }
+
+  /**
+   * The SharePoint id recorded for each of the new project's folders.
+   *
+   * Shown because nothing else in the app can: the ids live in the Web API's
+   * `DocumentStorageDetails` and `ProjectSubFolder` rows, and the listing has no other
+   * view onto them. Folders are indented by depth so the tree is still readable flattened.
+   */
+  private static _renderFolderIds(documentStorage: IDocumentStorageResult): React.ReactElement {
+    const folderIds: IFolderIdRow[] = toFolderIdRows(documentStorage.model, documentStorage.rootName);
+
+    return (
+      <details className={styles.folderIds} open>
+        <summary>
+          {documentStorage.isRecorded
+            ? `SharePoint folder ids recorded for ${folderIds.length} folder(s)`
+            : `SharePoint folder ids could not be recorded: ${documentStorage.message}`}
+        </summary>
+        <table className={styles.folderIdTable}>
+          <thead>
+            <tr>
+              <th>Folder</th>
+              <th>SharePoint id</th>
+            </tr>
+          </thead>
+          <tbody>
+            {folderIds.map((row: IFolderIdRow, index: number) => (
+              <tr key={`${row.id}-${index}`}>
+                <td style={{ paddingLeft: `${0.75 + row.depth * 1.25}em` }}>{row.name}</td>
+                <td className={styles.folderIdValue}>{row.id}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
     );
   }
 

@@ -58,8 +58,16 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       loginService,
       sharePointSiteService
     } = this.props;
-    const { isAuthenticated, login, selectedSite, isChangingSite, rows, savedForms, notification } =
-      this.state;
+    const {
+      isAuthenticated,
+      login,
+      selectedSite,
+      isChangingSite,
+      rows,
+      savedForms,
+      notification,
+      documentStorage
+    } = this.state;
     const userRoleId: number | undefined = login?.userRoleId;
     // The app is shown only when a site has been chosen and the user is not in the middle
     // of changing it.
@@ -96,6 +104,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
               notification={notification}
+              documentStorage={documentStorage}
               siteTitle={selectedSite.title}
               onChangeSite={this._onChangeSite}
               onSaveProject={this._onSaveProject}
@@ -198,7 +207,10 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       // Stored under the id the API gave it, so a project created with `id: 0` can be
       // reopened for editing under its new id.
       savedForms: { ...state.savedForms, [result.projectId]: saved },
-      notification: XsProject._toSaveNotification(result, this.state.selectedSite)
+      notification: XsProject._toSaveNotification(result, this.state.selectedSite),
+      // Undefined on an update, or when nothing could be recorded - the listing then
+      // simply has no folder ids to show.
+      documentStorage: result.documentStorage
     }));
   };
 
@@ -273,7 +285,14 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
     }));
   };
 
+  /**
+   * Clears the save message and the folder ids together.
+   *
+   * They are one report of one save: leaving the ids on screen after the message that
+   * introduced them has gone would present them as the state of whatever the user does
+   * next.
+   */
   private _onDismissNotification = (): void => {
-    this.setState({ notification: undefined });
+    this.setState({ notification: undefined, documentStorage: undefined });
   };
 }

@@ -102,6 +102,7 @@ function stubBuildingService(): IBuildingService {
 
   return {
     getProject: async (id: number): Promise<IBuildingDetails | undefined> => ({ id }),
+    getProjectSubFolders: async (): Promise<undefined> => undefined,
     saveProject: async (
       form: IBuildingForm,
       _context: IProjectSaveContext
@@ -114,10 +115,34 @@ function stubBuildingService(): IBuildingService {
         isCreated,
         response: { id: projectId },
         projectTemplateId: 1,
+        // What `Document/AddDocumentStorageDetails` was told, which the listing prints.
+        documentStorage: isCreated
+          ? {
+              isRecorded: true,
+              rootName: 'Roof',
+              message: '',
+              model: {
+                projectId,
+                documentStorageType: 1,
+                sharePointFolderId: 'guid:Roof',
+                lstProjectFolderDetailsViewModel: [
+                  {
+                    foldersId: 5,
+                    folderName: 'Drawings',
+                    documentStorageType: 1,
+                    sharePointFolderId: 'guid:Roof/Drawings',
+                    lstProjectsubFolderViewModel: []
+                  }
+                ]
+              }
+            }
+          : undefined,
         // Only an insert provisions folders, matching what the real service does.
         folderProvision: isCreated
           ? {
               rootUrl: `https://contoso.sharepoint.com/sites/projects/Shared%20Documents/${form.buildingName}`,
+              rootId: 'root-guid',
+              folders: [],
               created: ['Roof', 'Roof/Drawings'],
               skipped: ['Roof/Contracts'],
               failed: [{ path: 'Roof/Locked', message: 'Access denied.' }]
@@ -448,6 +473,38 @@ describe('XsProject', () => {
     // A failure is named rather than counted, so one refused branch is distinguishable
     // from a refused library.
     expect(host.textContent).toContain('1 folder(s) could not be created: Roof/Locked');
+  });
+
+  it('lists the SharePoint folder ids the Web API was told about', async () => {
+    await mount(UserRole.Admin);
+    await clickText('Project');
+    await clickText('+ Add Project');
+
+    setValue('#project-buildingName', 'Smoke test project');
+    setValue('#project-address', 'Keizersgracht 1');
+    setValue('#project-postcode', '1015 CJ');
+    await clickText('Save');
+
+    // The bound model itself, folder by folder - the ids are the only way to tell which
+    // SharePoint folder a project's folder became.
+    expect(host.textContent).toContain('Drawings');
+    expect(host.textContent).toContain('guid:Roof/Drawings');
+    expect(host.textContent).toContain('guid:Roof');
+  });
+
+  it('clears the folder ids along with the message they belong to', async () => {
+    await mount(UserRole.Admin);
+    await clickText('Project');
+    await clickText('+ Add Project');
+
+    setValue('#project-buildingName', 'Smoke test project');
+    setValue('#project-address', 'Keizersgracht 1');
+    setValue('#project-postcode', '1015 CJ');
+    await clickText('Save');
+
+    await clickText('×');
+
+    expect(host.textContent).not.toContain('guid:Roof/Drawings');
   });
 
   it('reopens a created project for editing with its values intact', async () => {

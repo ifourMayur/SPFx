@@ -14,10 +14,16 @@ import {
   toBuildingSaveRequest,
   toPreservedFields
 } from '../models/BuildingSave';
+import {
+  IDocumentStorageRequest,
+  IDocumentStorageResult,
+  toDocumentStorageModel
+} from '../models/DocumentStorage';
 import { IProjectTemplateFolders, toTemplateFolders } from '../models/ProjectTemplateFolder';
 import { IFolderProvisionResult } from '../models/SharePointFolder';
 import { ISharePointSite } from '../models/SharePointSite';
 import { IApiService } from './ApiService';
+import { IDocumentStorageService } from './DocumentStorageService';
 import { IProjectTemplateService } from './ProjectTemplateService';
 import { ISharePointFolderService } from './SharePointFolderService';
 
@@ -36,16 +42,29 @@ import { ISharePointFolderService } from './SharePointFolderService';
  * | 2 | `POST api/Building` | step 8, `DoActionForPost<BuildingModel>(buildingModel, "Building")` | always |
  * | 3 | `GET ProjectTemplate/GetSubFolder` | step 5's template-only sibling | after a successful save |
  * | 4 | Create those folders in SharePoint | step 6, `SharePointHelper.CreateProjectFolders` | insert only, and only with a chosen site |
+ * | 5 | `GET Building/GetProjectsubFolder` | step 9d.1 | insert only, once folders exist |
+ * | 6 | `POST Document/AddDocumentStorageDetails` | step 9d.4 | insert only, once folders exist |
  *
  * The POST routes on `model.Id`, so the one call inserts (`id: 0`) and updates (`id > 0`).
  * The read-back before it exists because `ProjectController.Update` assigns the project's
  * image, its SharePoint folder id and the third-party integration fields from the request
  * **unconditionally** - see `IPreservedProjectFields`.
  *
- * What still follows in the reference is not implemented: the "rebind" second POST that
- * stores the folder tree's root id on the project, `Document/AddDocumentStorageDetails`, and
- * the tender folders. So the folders exist in SharePoint but the Web API does not yet know
- * their ids, and a created project's `sharepointFolderId` stays empty.
+ * ## Why the folder tree is read twice
+ *
+ * Steps 3 and 5 fetch the same shape from two different endpoints, and the difference is
+ * not redundancy. Step 3 decides **what to create**: `ProjectTemplate/GetSubFolder` reports
+ * the template as authored, and handles the `BIM` folder the API synthesizes. Step 5
+ * decides **what to report**: `AddList` stamps the SharePoint ids onto `ProjectSubFolder`
+ * rows matched by id, and only `Building/GetProjectsubFolder` knows those - the template
+ * read answers with `SubFolder.ID` instead. Driving creation from the project-scoped read
+ * as the reference does would create every active folder in the system rather than the
+ * template's, so the two reads stay separate here. See `models/DocumentStorage.ts`.
+ *
+ * One step of the reference is still not implemented: the "rebind" second `POST
+ * api/Building` that stores the tree's root id on the project itself, and the tender
+ * folders. So a created project's own `sharepointFolderId` column stays empty even though
+ * its folders and their ids are now recorded.
  */
 export interface IBuildingService {
   /**
@@ -54,6 +73,22 @@ export interface IBuildingService {
    * @returns the project, or `undefined` when the API answers without one.
    */
   getProject(id: number): Promise<IBuildingDetails | undefined>;
+
+  /**
+   * Reads a project's own folder tree - `GET Building/GetProjectsubFolder`.
+   *
+   * Step 1 of the reference's 9d. Unlike `IProjectTemplateService.getSubFolders`, the
+   * sub-folder ids this reports are the project's `ProjectSubFolder` rows, which is what
+   * `Document/AddDocumentStorageDetails` matches on.
+   *
+   * @param templateId - the template the project is on.
+   * @param projectId - the project itself.
+   * @returns the tree, or `undefined` when the API answers without one.
+   */
+  getProjectSubFolders(
+    templateId: number,
+    projectId: number
+  ): Promise<IProjectTemplateFolders | undefined>;
 
   /**
    * Inserts or updates the project the form describes.
@@ -66,10 +101,12 @@ export interface IBuildingService {
    *
    * Once the save succeeds, the template's folder tree is read through
    * `IProjectTemplateService` and, for a newly inserted project, created in the chosen
-   * SharePoint site. Neither of those is allowed to fail the save: the project genuinely
-   * exists by then, so reporting a failure would invite the user to save again and create a
+   * SharePoint site - and the ids SharePoint gave those folders are then reported back to
+   * the Web API. None of that is allowed to fail the save: the project genuinely exists by
+   * then, so reporting a failure would invite the user to save again and create a
    * duplicate. What could not be done comes back in the result instead - an absent
-   * `templateFolders`, or a `folderProvision` carrying failures.
+   * `templateFolders`, a `folderProvision` carrying failures, or a `documentStorage` saying
+   * the ids were not recorded.
    *
    * @param form - the validated form; `form.id === 0` inserts.
    * @param context - session-derived values the form does not hold.
@@ -86,11 +123,18 @@ export interface IBuildingService {
 /** Source name used for SPFx log entries emitted by this service. */
 const LOG_SOURCE: string = 'BuildingService';
 
+/**
+ * The project-scoped folder-tree action on this controller. Note the API's own casing -
+ * `subFolder` with a lower-case `s`, unlike `ProjectTemplate/GetSubFolder`.
+ */
+const PROJECT_SUB_FOLDER_ACTION: string = 'GetProjectsubFolder';
+
 /** Default {@link IBuildingService}, built on `IApiService`. */
 export class BuildingService implements IBuildingService {
   private readonly _apiService: IApiService;
   private readonly _projectTemplateService: IProjectTemplateService;
   private readonly _folderService: ISharePointFolderService;
+  private readonly _documentStorageService: IDocumentStorageService;
   private readonly _endpoint: string;
 
   /**
@@ -101,6 +145,9 @@ export class BuildingService implements IBuildingService {
    * @param projectTemplateService - reads the template's folder tree once a save succeeds.
    *   Injected as an interface rather than reached for, so the save can be tested without
    *   a second transport.
+   * @param folderService - creates that tree in the chosen SharePoint site.
+   * @param documentStorageService - reports the ids SharePoint gave those folders back to
+   *   the Web API.
    * @param endpoint - controller route; defaults to `api.endpoints.building` from the
    *   environment configuration, and can be overridden in tests.
    */
@@ -108,11 +155,13 @@ export class BuildingService implements IBuildingService {
     apiService: IApiService,
     projectTemplateService: IProjectTemplateService,
     folderService: ISharePointFolderService,
+    documentStorageService: IDocumentStorageService,
     endpoint: string = getEnvironment().api.endpoints.building
   ) {
     this._apiService = apiService;
     this._projectTemplateService = projectTemplateService;
     this._folderService = folderService;
+    this._documentStorageService = documentStorageService;
     this._endpoint = endpoint;
   }
 
@@ -120,6 +169,25 @@ export class BuildingService implements IBuildingService {
     const payload: unknown = await this._apiService.get<unknown>(this._endpoint, { id });
 
     return unwrapResponseDetail<IBuildingDetails>(payload, `project ${id}`);
+  }
+
+  public async getProjectSubFolders(
+    templateId: number,
+    projectId: number
+  ): Promise<IProjectTemplateFolders | undefined> {
+    const relativeUrl: string = `${this._endpoint}/${PROJECT_SUB_FOLDER_ACTION}`;
+    // `isCreateProject` makes the API report the folders of a project that has just been
+    // created, which is exactly the moment this is called from.
+    const payload: unknown = await this._apiService.get<unknown>(relativeUrl, {
+      id: templateId,
+      ProjectId: projectId,
+      isCreateProject: true
+    });
+
+    return unwrapResponseDetail<IProjectTemplateFolders>(
+      payload,
+      `the folders of project ${projectId}`
+    );
   }
 
   public async saveProject(
@@ -194,6 +262,9 @@ export class BuildingService implements IBuildingService {
       projectTemplateId,
       request.isEnableBIMFolder
     );
+    const folderProvision: IFolderProvisionResult | undefined = isCreated
+      ? await this._createFolders(context.site, request.projectName, templateFolders)
+      : undefined;
 
     return {
       projectId,
@@ -201,10 +272,120 @@ export class BuildingService implements IBuildingService {
       response,
       projectTemplateId: projectTemplateId || undefined,
       templateFolders,
-      folderProvision: isCreated
-        ? await this._createFolders(context.site, request.projectName, templateFolders)
-        : undefined
+      folderProvision,
+      documentStorage: await this._recordFolderIds(
+        projectId,
+        projectTemplateId,
+        request.projectName,
+        folderProvision
+      )
     };
+  }
+
+  /**
+   * Tells the Web API which SharePoint folder each of the project's folders became.
+   *
+   * Steps 5 and 6 of the table above, run together because neither is worth doing without
+   * the other: the read exists only to give the ids somewhere to be bound.
+   *
+   * Reports rather than throws, like the two steps before it. The project and its folders
+   * both exist by the time this runs, so a failure here has to leave the save successful -
+   * what it could not do comes back on the result instead.
+   *
+   * @returns the outcome, or `undefined` when there was nothing to record: no folders were
+   *   provisioned (an update, or no chosen site), the root folder has no id, the
+   *   project-scoped tree could not be read, or nothing in it matched a folder that exists.
+   */
+  private async _recordFolderIds(
+    projectId: number,
+    projectTemplateId: number,
+    projectName: string,
+    provision: IFolderProvisionResult | undefined
+  ): Promise<IDocumentStorageResult | undefined> {
+    if (!provision || !provision.rootId) {
+      return undefined;
+    }
+
+    const projectFolders: IProjectTemplateFolders | undefined = await this._readProjectFolders(
+      projectTemplateId,
+      projectId
+    );
+    const model: IDocumentStorageRequest | undefined = toDocumentStorageModel(
+      projectName,
+      projectFolders,
+      provision,
+      projectId
+    );
+
+    if (!model) {
+      Log.warn(
+        LOG_SOURCE,
+        `No folder of project ${projectId} could be matched to one created in SharePoint, so no ids were recorded.`
+      );
+
+      return undefined;
+    }
+
+    // Named from what was created rather than from the request, so a name SharePoint had
+    // to sanitize is reported as the folder the user will actually find.
+    const rootName: string = provision.folders.length > 0 ? provision.folders[0].name : projectName;
+
+    try {
+      await this._documentStorageService.addDocumentStorageDetails(model);
+
+      return { isRecorded: true, rootName, message: '', model };
+    } catch (error) {
+      Log.error(
+        LOG_SOURCE,
+        error instanceof Error
+          ? error
+          : new Error(`The folder ids of project ${projectId} could not be recorded.`)
+      );
+
+      return {
+        isRecorded: false,
+        rootName,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'The project folder ids could not be recorded on the Web API.',
+        model
+      };
+    }
+  }
+
+  /**
+   * Reads the project's own folder tree, reporting rather than throwing.
+   *
+   * Swallows its failure for the same reason {@link _readTemplateFolders} does: the project
+   * and its SharePoint folders both exist by now, so a rejection here would show a failed
+   * save for work that succeeded. The caller sees an absent tree and records no ids.
+   */
+  private async _readProjectFolders(
+    projectTemplateId: number,
+    projectId: number
+  ): Promise<IProjectTemplateFolders | undefined> {
+    if (projectTemplateId <= 0) {
+      Log.warn(
+        LOG_SOURCE,
+        `Project ${projectId} reported no template, so its own folders were not read.`
+      );
+
+      return undefined;
+    }
+
+    try {
+      return await this.getProjectSubFolders(projectTemplateId, projectId);
+    } catch (error) {
+      Log.error(
+        LOG_SOURCE,
+        error instanceof Error
+          ? error
+          : new Error(`The folders of project ${projectId} could not be read.`)
+      );
+
+      return undefined;
+    }
   }
 
   /**

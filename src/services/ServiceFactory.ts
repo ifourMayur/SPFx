@@ -9,6 +9,7 @@ import { BuildingService, IBuildingService } from './BuildingService';
 import { ILoginService, LoginService } from './LoginService';
 import { ILookupService, LookupService } from './LookupService';
 import { IProjectService, ProjectService } from './ProjectService';
+import { DocumentStorageService, IDocumentStorageService } from './DocumentStorageService';
 import { IProjectTemplateService, ProjectTemplateService } from './ProjectTemplateService';
 import { ISharePointFolderService, SharePointFolderService } from './SharePointFolderService';
 import { ISpHttpClient, SpRestHttpClient } from './SharePointHttpClient';
@@ -23,6 +24,11 @@ export interface IServiceContainer {
   readonly buildingService: IBuildingService;
   /** What a project template defines - today its folder tree. */
   readonly projectTemplateService: IProjectTemplateService;
+  /**
+   * Records which SharePoint folder each of a project's folders became, once they have
+   * been created: `Document/AddDocumentStorageDetails`.
+   */
+  readonly documentStorageService: IDocumentStorageService;
   /** Reference data the project form binds its dropdowns to. */
   readonly lookupService: ILookupService;
   /**
@@ -104,10 +110,15 @@ export class ServiceFactory {
     // sharing it keeps "which client talks to SharePoint" a single answer.
     const spHttpClient: ISpHttpClient = new SpRestHttpClient(context.spHttpClient);
     const folderService: ISharePointFolderService = new SharePointFolderService(spHttpClient);
+    const documentStorageService: IDocumentStorageService = new DocumentStorageService(
+      apiService,
+      getEnvironment().api.endpoints.document
+    );
 
     return {
       apiService,
       projectTemplateService,
+      documentStorageService,
       loginService: new LoginService(
         apiService,
         tokenProvider,
@@ -121,6 +132,7 @@ export class ServiceFactory {
         apiService,
         projectTemplateService,
         folderService,
+        documentStorageService,
         getEnvironment().api.endpoints.building
       ),
       lookupService: new LookupService(apiService),

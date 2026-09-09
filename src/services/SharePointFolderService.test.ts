@@ -34,6 +34,44 @@ const SITE: ISharePointSite = {
 /** The library root the site reports, with the space that makes encoding worth testing. */
 const LIBRARY_ROOT: string = '/sites/projects/Shared Documents';
 
+/**
+ * The library-relative path a request addresses, read back out of its OData literal.
+ *
+ * The reverse of what the service does to build the URL, done independently rather than
+ * with a shared helper so the tests still check the encoding the service produces.
+ */
+function addressedPath(url: string): string {
+  const start: number = url.indexOf("DecodedUrl='") + "DecodedUrl='".length;
+  const literal: string = url.substring(start, url.indexOf("')", start));
+
+  return decodeURIComponent(literal).replace(/''/g, "'").substring(LIBRARY_ROOT.length + 1);
+}
+
+/** The `UniqueId` this fake tenant hands out for a folder, derived from its path. */
+function folderId(path: string): string {
+  return `guid:${path}`;
+}
+
+/**
+ * The `driveItem.id` the same folder has in the drive API - the format Graph uses, and
+ * the only one the Web API can resolve. Deliberately unlike {@link folderId}: the two are
+ * unrelated identifiers for one folder, not two encodings of one value.
+ */
+function driveItemId(path: string): string {
+  return `01ITEM:${path}`;
+}
+
+/** The library-relative path a `_api/v2.0/drive/root:/...` request addresses. */
+function drivePath(url: string): string {
+  const marker: string = '/drive/root:/';
+
+  return url
+    .substring(url.indexOf(marker) + marker.length)
+    .split('/')
+    .map((segment: string): string => decodeURIComponent(segment))
+    .join('/');
+}
+
 /** Rules a fake transport applies: any URL containing `match` fails with `message`. */
 interface IFailureRule {
   match: string;
@@ -86,6 +124,15 @@ function fakeClient(
     getJson: async <T>(url: string): Promise<T> => {
       requests.push({ method: 'GET', url });
 
+      if (url.indexOf('/_api/v2.0/drive/root:/') >= 0) {
+        const rule: IFailureRule | undefined = ruleFor(url);
+        if (rule) {
+          throw new Error(rule.message);
+        }
+
+        return { id: driveItemId(drivePath(url)) } as unknown as T;
+      }
+
       if (url.indexOf('defaultDocumentLibrary') >= 0) {
         const rule: IFailureRule | undefined = ruleFor(url);
         if (rule) {
@@ -100,7 +147,10 @@ function fakeClient(
         throw new Error('404 Not Found');
       }
 
-      return { Exists: true } as unknown as T;
+      return {
+        Exists: true,
+        UniqueId: folderId(addressedPath(url))
+      } as unknown as T;
     },
     postJson: async <T>(url: string): Promise<T> => {
       requests.push({ method: 'POST', url });
@@ -114,7 +164,12 @@ function fakeClient(
         throw new Error("A folder with the name 'x' already exists.");
       }
 
-      return undefined as unknown as T;
+      // SharePoint answers a create with the `SP.Folder` it made; `UniqueId` is one of the
+      // entity's default properties, so it arrives without being asked for.
+      return {
+        UniqueId: folderId(addressedPath(url)),
+        Name: addressedPath(url).split('/').slice(-1)[0]
+      } as unknown as T;
     }
   };
 }
@@ -224,10 +279,12 @@ describe('SharePointFolderService - folders that are already there', () => {
     const requests: IRecordedRequest[] = [];
     await build(requests, { existing: ['Roof replacement'] }).createProjectFolders(SITE, 'Roof replacement', []);
 
-    // Library lookup, the failed create, then the check that explains it.
+    // Library lookup, the failed create, the check that explains it, and only then the
+    // drive-API read that gets the folder's Graph id.
     expect(requests.map((request: IRecordedRequest): string => request.method)).toEqual([
       'GET',
       'POST',
+      'GET',
       'GET'
     ]);
     expect(requests[2].url).toContain('GetFolderByServerRelativePath');
@@ -294,5 +351,102 @@ describe('SharePointFolderService - failures', () => {
     await expect(service.createProjectFolders(SITE, 'Roof replacement', TEMPLATE)).rejects.toThrow(
       '403 Forbidden'
     );
+  });
+});
+
+describe('SharePointFolderService - reporting the ids SharePoint gave out', () => {
+  it('reports the root folder id, which is what identifies the project on the Web API', async () => {
+    const result: IFolderProvisionResult = await build([]).createProjectFolders(
+      SITE,
+      'Roof replacement',
+      TEMPLATE
+    );
+
+    expect(result.rootId).toBe('01ITEM:Roof replacement');
+  });
+
+  it('reports the id of every folder it created, against the path it created it at', async () => {
+    const result: IFolderProvisionResult = await build([]).createProjectFolders(
+      SITE,
+      'Roof replacement',
+      TEMPLATE
+    );
+
+    expect(result.folders).toEqual([
+      { name: 'Roof replacement', path: 'Roof replacement', id: '01ITEM:Roof replacement', uniqueId: 'guid:Roof replacement', url: 'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Roof%20replacement', wasCreated: true },
+      { name: 'Drawings', path: 'Roof replacement/Drawings', id: '01ITEM:Roof replacement/Drawings', uniqueId: 'guid:Roof replacement/Drawings', url: 'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Roof%20replacement/Drawings', wasCreated: true },
+      { name: 'Architectural', path: 'Roof replacement/Drawings/Architectural', id: '01ITEM:Roof replacement/Drawings/Architectural', uniqueId: 'guid:Roof replacement/Drawings/Architectural', url: 'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Roof%20replacement/Drawings/Architectural', wasCreated: true },
+      { name: 'Contracts', path: 'Roof replacement/Contracts', id: '01ITEM:Roof replacement/Contracts', uniqueId: 'guid:Roof replacement/Contracts', url: 'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Roof%20replacement/Contracts', wasCreated: true }
+    ]);
+  });
+
+  it('reports the id of a folder that was already there, so a retry can still record it', async () => {
+    const result: IFolderProvisionResult = await build([], {
+      existing: ['Roof replacement/Contracts']
+    }).createProjectFolders(SITE, 'Roof replacement', TEMPLATE);
+    const contracts = result.folders.filter((folder) => folder.name === 'Contracts')[0];
+
+    expect(contracts).toEqual({
+      name: 'Contracts',
+      path: 'Roof replacement/Contracts',
+      id: '01ITEM:Roof replacement/Contracts',
+      uniqueId: 'guid:Roof replacement/Contracts',
+      url: 'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Roof%20replacement/Contracts',
+      wasCreated: false
+    });
+  });
+
+  it('leaves out a folder it could not create, so nothing is recorded for a folder that is not there', async () => {
+    const result: IFolderProvisionResult = await build([], {
+      failures: [{ match: 'Contracts', message: 'Access denied.' }]
+    }).createProjectFolders(SITE, 'Roof replacement', TEMPLATE);
+
+    expect(result.folders.map((folder) => folder.name)).toEqual([
+      'Roof replacement',
+      'Drawings',
+      'Architectural'
+    ]);
+  });
+});
+
+describe('SharePointFolderService - ids the Web API can actually resolve', () => {
+  it('addresses the drive API by the folder path, under the site the folders went to', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(requests).createProjectFolders(SITE, 'Roof replacement', []);
+    const lookups: IRecordedRequest[] = requests.filter(
+      (request: IRecordedRequest): boolean => request.url.indexOf('/_api/v2.0/') >= 0
+    );
+
+    // `_api/v2.0/drive` is the site's default document library - the same library the
+    // folders were created in - so the planned paths carry across untranslated.
+    expect(lookups.map((request: IRecordedRequest): string => request.url)).toEqual([
+      'https://contoso.sharepoint.com/sites/projects/_api/v2.0/drive/root:/Roof%20replacement'
+    ]);
+  });
+
+  it('reports the drive API id, not the SharePoint UniqueId, as the folder id', async () => {
+    const result: IFolderProvisionResult = await build([]).createProjectFolders(
+      SITE,
+      'Roof replacement',
+      []
+    );
+
+    // The two are unrelated identifiers for one folder. Only the first resolves through
+    // Graph, which is what the Web API uses, so it is the one reported as `id`.
+    expect(result.folders[0].id).toBe('01ITEM:Roof replacement');
+    expect(result.folders[0].uniqueId).toBe('guid:Roof replacement');
+  });
+
+  it('still creates the folder when the drive API will not give it an id', async () => {
+    const result: IFolderProvisionResult = await build([], {
+      failures: [{ match: '/_api/v2.0/', message: 'Not found.' }]
+    }).createProjectFolders(SITE, 'Roof replacement', []);
+
+    // Degrades to "created but unreported": the folder is genuinely there, so calling it a
+    // failure would be a lie - and an empty id is what stops it being posted to the Web API.
+    expect(result.created).toEqual(['Roof replacement']);
+    expect(result.failed).toEqual([]);
+    expect(result.folders[0].id).toBe('');
+    expect(result.rootId).toBe('');
   });
 });

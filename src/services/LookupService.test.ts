@@ -213,6 +213,7 @@ describe('LookupService - endpoint composition', () => {
       users: 'RenamedUsers',
       projectTemplates: 'ProjectTemplate',
       spatialBreakdowns: 'SpatialBreakdown',
+      document: 'RenamedDocument',
       tenderTemplates: 'TenderTemplate',
       suppliers: 'Issuer'
     };

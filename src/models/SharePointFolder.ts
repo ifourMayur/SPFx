@@ -22,6 +22,39 @@ export interface IFolderProvisionFailure {
 }
 
 /**
+ * One folder that now exists in SharePoint, with the two ids it is known by.
+ *
+ * A folder created through SharePoint REST has a `UniqueId` - a GUID - and that is **not**
+ * the identifier Microsoft Graph addresses it by. Graph uses an opaque, drive-scoped
+ * `driveItem.id` (`01VL4HET...`), which is a different identifier rather than a different
+ * encoding: decoding one yields none of the other's bytes, so there is no local conversion
+ * between them. The Web API reaches these folders through Graph with app-only credentials,
+ * exactly as the reference's `SharePointHelper` does, so the Graph one is the id worth
+ * reporting - {@link id} - and the GUID is kept beside it only for diagnosing a folder in
+ * SharePoint's own APIs.
+ */
+export interface IProvisionedFolder {
+  /** Folder name as created: the template's name after {@link sanitizeFolderName}. */
+  name: string;
+  /** Path relative to the document library root, as {@link planFolderTree} planned it. */
+  path: string;
+  /**
+   * The `driveItem.id` Graph addresses this folder by, read from the site's own drive API.
+   *
+   * Empty when that read failed, which is deliberately not the same as a failed folder:
+   * the folder exists, it simply cannot be reported to the Web API, and an empty id is what
+   * keeps `toDocumentStorageModel` from posting a row that would never resolve.
+   */
+  id: string;
+  /** SharePoint's own `UniqueId`. Empty when SharePoint answered without one. */
+  uniqueId: string;
+  /** Absolute URL of this folder, for a "go and look" link. */
+  url: string;
+  /** True when this run created it; false when it was already there. */
+  wasCreated: boolean;
+}
+
+/**
  * What provisioning a project's folders actually did.
  *
  * Declared in the models layer, not beside the service that produces it, because
@@ -30,6 +63,21 @@ export interface IFolderProvisionFailure {
 export interface IFolderProvisionResult {
   /** Absolute URL of the project's root folder, for the "go and check it" message. */
   rootUrl: string;
+  /**
+   * The project root folder's Graph `driveItem.id` - the reference's `SharePointFolderId`.
+   *
+   * Empty when the root could not be created, or its id could not be read, which is what
+   * tells the caller there is nothing worth reporting to the Web API.
+   */
+  rootId: string;
+  /**
+   * Every folder that now exists, whether this run created it or found it already there.
+   *
+   * Skipped folders are included deliberately: a retry after a partial failure has to be
+   * able to report the ids of the folders the first run created, and those are skips the
+   * second time round.
+   */
+  folders: IProvisionedFolder[];
   /** Folders this run created. */
   created: string[];
   /** Folders that were already there - a re-save, or a retry after a partial failure. */

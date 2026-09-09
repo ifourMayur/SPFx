@@ -42,11 +42,33 @@
 
 /** One sub-folder at any depth below the top level. */
 export interface IProjectTemplateSubFolder {
+  /**
+   * Row id of this sub-folder.
+   *
+   * **Which table it belongs to depends on which endpoint answered**, and getting that
+   * wrong writes SharePoint ids onto the wrong rows:
+   *
+   * | Endpoint | `id` is |
+   * | --- | --- |
+   * | `ProjectTemplate/GetSubFolder` | `SubFolder.ID` - the template as authored |
+   * | `Building/GetProjectsubFolder` | `ProjectSubFolder.Id` - this project's own copy |
+   *
+   * `DocumentStorageDetailsService.AddList` matches on the second
+   * (`projectSubFolderList.FirstOrDefault(x => x.Id == item.Id)`), which is why the model
+   * posted to `Document/AddDocumentStorageDetails` is built from the project-scoped read.
+   */
   id: number;
   /** Id of the top-level folder this sits under, not of the parent sub-folder. */
   folderID: number;
   subFolderName?: string;
   isActive?: boolean;
+  /**
+   * `DocumentStorageTypeEnum`, filled in when reporting provisioned folders back to the
+   * Web API. Absent as read - the template does not define one.
+   */
+  documentStorageType?: number;
+  /** SharePoint's `UniqueId` for this folder, once it has been created. */
+  sharePointFolderId?: string;
   /** Children. Named for the second level, but used at every level below the first. */
   lstProjectsubsubFolderViewModel?: IProjectTemplateSubFolder[];
 }
@@ -55,17 +77,45 @@ export interface IProjectTemplateSubFolder {
 export interface IProjectTemplateFolder {
   /** Always `0` here; `foldersId` is the folder's actual id. */
   id?: number;
+  /**
+   * `Folder.ID` - a row of the global folder table, not a per-template or per-project id.
+   * Both endpoints in {@link IProjectTemplateSubFolder} report the same value here, which
+   * is why top-level rows are safe to report from either read.
+   */
   foldersId: number;
   folderName?: string;
   isActive?: boolean;
+  /**
+   * `DocumentStorageTypeEnum`.
+   *
+   * `AddList` reads it as `(int)item.DocumentStorageType` with no null check, so a
+   * top-level folder posted without one faults the whole call server-side - see
+   * `toDocumentStorageModel`.
+   */
+  documentStorageType?: number;
+  /** SharePoint's `UniqueId` for this folder, once it has been created. */
+  sharePointFolderId?: string;
   lstProjectsubFolderViewModel?: IProjectTemplateSubFolder[];
 }
 
-/** Response body of `GET ProjectTemplate/GetSubFolder`, unwrapped from its envelope. */
+/**
+ * Response body of `GET ProjectTemplate/GetSubFolder` and of
+ * `GET Building/GetProjectsubFolder`, unwrapped from its envelope.
+ *
+ * One shape for both because the API answers both with `GetProjectTemplateDetailsViewModel`
+ * - they differ in what the ids mean, not in the fields. See
+ * {@link IProjectTemplateSubFolder.id}.
+ */
 export interface IProjectTemplateFolders {
   lstProjectFolderDetailsViewModel?: IProjectTemplateFolder[];
   templateName?: string;
   templateID?: number;
+  /** The project these folders belong to. Only the project-scoped read reports it. */
+  projectId?: number;
+  /** `DocumentStorageTypeEnum` for the project as a whole. */
+  documentStorageType?: number;
+  /** SharePoint's `UniqueId` for the project's root folder. */
+  sharePointFolderId?: string;
 }
 
 /** Top-level folders of the tree, as a plain array. */

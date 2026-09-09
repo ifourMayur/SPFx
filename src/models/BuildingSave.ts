@@ -31,6 +31,10 @@
  */
 
 import { IBuildingForm, IFolderSelection } from './Building';
+// Type-only on purpose. `DocumentStorage` imports this module's `DOCUMENT_STORAGE_TYPE` as
+// a value, so importing it back as a type keeps the runtime dependency one-way: TypeScript
+// erases the line below entirely.
+import type { IDocumentStorageResult } from './DocumentStorage';
 import { IProjectTemplateFolders } from './ProjectTemplateFolder';
 import { IFolderProvisionResult } from './SharePointFolder';
 import { ISharePointSite } from './SharePointSite';
@@ -308,6 +312,15 @@ export interface IProjectSaveResult {
    * resolved. A present result may still carry failures; see {@link IFolderProvisionResult}.
    */
   folderProvision?: IFolderProvisionResult;
+  /**
+   * What reporting those folders' SharePoint ids back to the Web API did, through
+   * `Document/AddDocumentStorageDetails`.
+   *
+   * `undefined` when there was nothing to report - no folder was provisioned with an id, or
+   * the project-scoped folder tree could not be read back to bind them onto. A present
+   * result may still say the API refused the call; see {@link IDocumentStorageResult}.
+   */
+  documentStorage?: IDocumentStorageResult;
 }
 
 /** Parses an `<option>` value into a server id; anything unusable becomes `0`. */

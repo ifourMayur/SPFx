@@ -24,12 +24,18 @@ import type { HttpClientResponse, IHttpClientOptions } from '@microsoft/sp-http'
 
 import { IBuildingForm, createEmptyBuildingForm } from '../models/Building';
 import { IProjectSaveContext, IProjectSaveResult } from '../models/BuildingSave';
-import { IFolderProvisionResult } from '../models/SharePointFolder';
+import { IDocumentStorageRequest } from '../models/DocumentStorage';
+import {
+  IFolderProvisionResult,
+  IProvisionedFolder,
+  planFolderTree
+} from '../models/SharePointFolder';
 import { ISharePointSite } from '../models/SharePointSite';
 import { ApiService } from './ApiService';
 import { ApiTokenStore } from './ApiTokenStore';
 import { BuildingService, IBuildingService } from './BuildingService';
 import { ProjectTemplateService } from './ProjectTemplateService';
+import { IDocumentStorageService } from './DocumentStorageService';
 import { ISharePointFolderService } from './SharePointFolderService';
 
 /**
@@ -67,6 +73,8 @@ interface IFakeBodies {
   write?: unknown;
   /** `GET ProjectTemplate/GetSubFolder` - the folder tree read afterwards. */
   folders?: unknown;
+  /** `GET Building/GetProjectsubFolder` - the project-scoped tree read after provisioning. */
+  projectFolders?: unknown;
 }
 
 /**
@@ -86,6 +94,10 @@ function fakeTransport(bodies: IFakeBodies, requests: IRecordedRequest[]): IFake
         headers: (options.headers || {}) as Record<string, string>,
         body: options.body ? JSON.parse(String(options.body)) : {}
       });
+
+      if (url.indexOf('GetProjectsubFolder') >= 0) {
+        return fakeResponse(bodies.projectFolders);
+      }
 
       if (url.indexOf('GetSubFolder') >= 0) {
         return fakeResponse(bodies.folders);
@@ -126,9 +138,22 @@ function fakeFolderService(
         throw failWith;
       }
 
+      // Planned with the real function so the paths this reports are exactly the ones the
+      // binding will look for - a fake that invented its own would prove nothing.
+      const paths: string[] = planFolderTree(projectName, folders);
+
       return {
         rootUrl: `${site.url}/Shared%20Documents/${projectName}`,
-        created: [projectName],
+        rootId: paths.length > 0 ? `guid:${paths[0]}` : '',
+        folders: paths.map((path: string): IProvisionedFolder => ({
+          name: path.split('/').slice(-1)[0],
+          path,
+          id: `guid:${path}`,
+          uniqueId: `unique:${path}`,
+          url: `${site.url}/Shared%20Documents/${path}`,
+          wasCreated: true
+        })),
+        created: paths,
         skipped: [],
         failed: []
       };
@@ -142,10 +167,33 @@ const SITE: ISharePointSite = {
   siteId: 'site-guid'
 };
 
+/**
+ * A document-storage service that records what it was asked to report.
+ *
+ * Stubbed rather than driven through a transport: whether the API accepts the model is
+ * `DocumentStorageService`'s own concern and is tested there. What matters here is whether
+ * the save calls it at all, and with which ids bound onto which tree.
+ */
+function fakeDocumentStorageService(
+  recorded: IDocumentStorageRequest[],
+  failWith?: Error
+): IDocumentStorageService {
+  return {
+    addDocumentStorageDetails: async (model: IDocumentStorageRequest): Promise<void> => {
+      recorded.push(model);
+
+      if (failWith) {
+        throw failWith;
+      }
+    }
+  };
+}
+
 function build(
   bodies: IFakeBodies,
   requests: IRecordedRequest[] = [],
-  folderService: ISharePointFolderService = fakeFolderService([])
+  folderService: ISharePointFolderService = fakeFolderService([]),
+  documentStorageService: IDocumentStorageService = fakeDocumentStorageService([])
 ): IBuildingService {
   const store: ApiTokenStore = new ApiTokenStore();
   store.setToken('app-jwt');
@@ -159,6 +207,7 @@ function build(
     apiService,
     new ProjectTemplateService(apiService, 'ProjectTemplate'),
     folderService,
+    documentStorageService,
     'Building'
   );
 }
@@ -250,6 +299,46 @@ const TEMPLATE_FOLDERS = {
   ]
 };
 
+/**
+ * The same tree as `Building/GetProjectsubFolder` returns it, for project 18.
+ *
+ * Identical folder names, **different sub-folder ids**: these are `ProjectSubFolder.Id`
+ * rows belonging to the project, where `TEMPLATE_FOLDERS` carries `SubFolder.ID` rows
+ * belonging to the template. That difference is the whole reason the save reads the tree
+ * twice - `DocumentStorageDetailsService.AddList` matches sub-folders on these.
+ */
+const PROJECT_FOLDERS = {
+  templateID: 3,
+  templateName: 'Base template',
+  lstProjectFolderDetailsViewModel: [
+    {
+      id: 0,
+      foldersId: 5,
+      folderName: 'Drawings',
+      isActive: true,
+      projectTemplateDocumentList: [],
+      lstProjectsubFolderViewModel: [
+        {
+          id: 901,
+          folderID: 5,
+          subFolderName: 'Architectural',
+          isActive: true,
+          projectTemplateDocumentList: [],
+          lstProjectsubsubFolderViewModel: [
+            {
+              id: 902,
+              folderID: 5,
+              subFolderName: 'Floor plans',
+              projectTemplateDocumentList: [],
+              lstProjectsubsubFolderViewModel: []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
 /** A save that inserted project 18 onto template 3. */
 const INSERTED = envelope({ id: 18, projectTemplateId: 3 });
 
@@ -258,7 +347,12 @@ const UPDATED = envelope({ id: 12, projectTemplateId: 3 });
 
 /** Every call answered: a save that runs all the way through. */
 function allBodies(write: unknown = INSERTED, read?: unknown): IFakeBodies {
-  return { read, write, folders: envelope(TEMPLATE_FOLDERS) };
+  return {
+    read,
+    write,
+    folders: envelope(TEMPLATE_FOLDERS),
+    projectFolders: envelope(PROJECT_FOLDERS)
+  };
 }
 
 describe('BuildingService - inserting a project', () => {
@@ -650,5 +744,124 @@ describe('BuildingService - failures reported inside an HTTP 200', () => {
     const service: IBuildingService = build(allBodies(envelope({ id: 0 })));
 
     await expect(service.saveProject(form(), CONTEXT)).rejects.toThrow(/without returning its id/);
+  });
+});
+
+describe('BuildingService - recording the SharePoint folder ids', () => {
+  it('reads the project-scoped folder tree, not the template one, once the folders exist', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), contextWithSite());
+    const read: IRecordedRequest[] = requests.filter(
+      (request: IRecordedRequest) => request.url.indexOf('GetProjectsubFolder') >= 0
+    );
+
+    // Step 1 of the reference's 9d, asked for the project it has just inserted.
+    expect(read).toHaveLength(1);
+    expect(read[0].url).toBe(
+      'https://api.example.com/api/Building/GetProjectsubFolder?id=3&ProjectId=18&isCreateProject=true'
+    );
+  });
+
+  it('reports the folder ids against the project it just created', async () => {
+    const recorded: IDocumentStorageRequest[] = [];
+    await build(allBodies(), [], fakeFolderService([]), fakeDocumentStorageService(recorded)).saveProject(
+      form(),
+      contextWithSite()
+    );
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].projectId).toBe(18);
+    expect(recorded[0].sharePointFolderId).toBe('guid:Roof replacement');
+  });
+
+  it('reports each id against the project sub-folder row the API matches on', async () => {
+    const recorded: IDocumentStorageRequest[] = [];
+    await build(allBodies(), [], fakeFolderService([]), fakeDocumentStorageService(recorded)).saveProject(
+      form(),
+      contextWithSite()
+    );
+    const drawings = (recorded[0].lstProjectFolderDetailsViewModel || [])[0];
+    const architectural = (drawings.lstProjectsubFolderViewModel || [])[0];
+
+    expect(drawings.sharePointFolderId).toBe('guid:Roof replacement/Drawings');
+    // 901 is the `ProjectSubFolder.Id`; the template's own id for this folder is 11.
+    expect(architectural.id).toBe(901);
+    expect(architectural.sharePointFolderId).toBe('guid:Roof replacement/Drawings/Architectural');
+  });
+
+  it('carries the outcome back on the result', async () => {
+    const result: IProjectSaveResult = await build(allBodies()).saveProject(form(), contextWithSite());
+
+    expect(result.documentStorage?.isRecorded).toBe(true);
+    expect(result.documentStorage?.message).toBe('');
+  });
+
+  it('names the root folder it recorded against, as SharePoint actually named it', async () => {
+    // Taken from what was created rather than from the form, so a name SharePoint had to
+    // sanitize is reported as the folder a user would find, not as what they typed.
+    const result: IProjectSaveResult = await build(allBodies()).saveProject(
+      form({ buildingName: 'Roof: replacement' }),
+      contextWithSite()
+    );
+
+    expect(result.documentStorage?.rootName).toBe('Roof replacement');
+  });
+
+  it('does not record anything on an update, because no folders were provisioned', async () => {
+    const recorded: IDocumentStorageRequest[] = [];
+    await build(
+      allBodies(UPDATED, envelope(STORED_PROJECT)),
+      [],
+      fakeFolderService([]),
+      fakeDocumentStorageService(recorded)
+    ).saveProject(form({ id: 12 }), contextWithSite());
+
+    expect(recorded).toHaveLength(0);
+  });
+
+  it('does not record anything when no site was chosen, so no folder has an id', async () => {
+    const recorded: IDocumentStorageRequest[] = [];
+    const result: IProjectSaveResult = await build(
+      allBodies(),
+      [],
+      fakeFolderService([]),
+      fakeDocumentStorageService(recorded)
+    ).saveProject(form(), CONTEXT);
+
+    expect(recorded).toHaveLength(0);
+    expect(result.documentStorage).toBeUndefined();
+  });
+
+  it('does not fail the save when the API refuses to record the folders', async () => {
+    // The project and its folders both exist by now, so a failure here must not send the
+    // user back to the form to create a duplicate.
+    const result: IProjectSaveResult = await build(
+      allBodies(),
+      [],
+      fakeFolderService([]),
+      fakeDocumentStorageService([], new Error('Something went wrong, please try after sometime'))
+    ).saveProject(form(), contextWithSite());
+
+    expect(result.projectId).toBe(18);
+    expect(result.documentStorage?.isRecorded).toBe(false);
+    expect(result.documentStorage?.message).toBe('Something went wrong, please try after sometime');
+  });
+
+  it('does not fail the save when the project-scoped tree cannot be read', async () => {
+    const recorded: IDocumentStorageRequest[] = [];
+    const result: IProjectSaveResult = await build(
+      {
+        write: INSERTED,
+        folders: envelope(TEMPLATE_FOLDERS),
+        projectFolders: { data: null, success: false, message: 'Project not found.', messageType: 3 }
+      },
+      [],
+      fakeFolderService([]),
+      fakeDocumentStorageService(recorded)
+    ).saveProject(form(), contextWithSite());
+
+    expect(result.projectId).toBe(18);
+    expect(recorded).toHaveLength(0);
+    expect(result.documentStorage).toBeUndefined();
   });
 });

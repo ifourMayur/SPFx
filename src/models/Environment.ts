@@ -27,6 +27,8 @@ export interface IApiEndpoints {
   readonly tenderTemplates: string;
   /** `IssuerController` route; `GetIssuerList` hangs off it - "suppliers" in this screen. */
   readonly suppliers: string;
+  /** `DocumentController` route; `AddDocumentStorageDetails` hangs off it. */
+  readonly document: string;
 }
 
 /** Everything the API layer needs to talk to the Web API in a given environment. */

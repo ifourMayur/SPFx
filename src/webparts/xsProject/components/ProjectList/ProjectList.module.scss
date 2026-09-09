@@ -369,3 +369,34 @@
   line-height: 1;
   cursor: pointer;
 }
+
+.folderIds {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  font-size: 0.9em;
+
+  summary {
+    cursor: pointer;
+  }
+}
+
+.folderIdTable {
+  width: 100%;
+  margin-top: 0.75em;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 0.35em 0.75em;
+    border-bottom: 1px solid "[theme:neutralLighter, default: #f3f2f1]";
+    text-align: left;
+  }
+}
+
+.folderIdValue {
+  font-family: "[theme:fontFamilyMonospace, default: Consolas, monospace]";
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  word-break: break-all;
+}

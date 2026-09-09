@@ -1,4 +1,5 @@
 import { ILoginResponse } from '../../../../models/Auth';
+import { IDocumentStorageResult } from '../../../../models/DocumentStorage';
 import { IBuildingForm } from '../../../../models/Building';
 import { IProjectListRow } from '../../../../models/ProjectListRow';
 import { ISharePointSite } from '../../../../models/SharePointSite';
@@ -46,4 +47,12 @@ export interface IXsProjectState {
   savedForms: { [projectId: number]: IBuildingForm };
   /** Success message to show on the listing after a save. */
   notification?: string;
+  /**
+   * What the last save reported to `Document/AddDocumentStorageDetails`, shown on the
+   * listing beneath {@link notification}.
+   *
+   * Owned here for the same reason the rows are: the save happens on the form, which
+   * routing unmounts before the listing renders the result.
+   */
+  documentStorage?: IDocumentStorageResult;
 }

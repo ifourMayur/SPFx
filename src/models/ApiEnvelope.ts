@@ -26,6 +26,19 @@
 
 import { ApiError } from './ApiError';
 
+/**
+ * `DropMessageType` on the server - what kind of message {@link IResponseDetail.message} is.
+ *
+ * Worth reading on endpoints whose `catch` block answers `success: true`, where this is the
+ * only field that still says the call failed. `Document/AddDocumentStorageDetails` is one.
+ */
+export const MESSAGE_TYPE = {
+  success: 0,
+  error: 1,
+  warning: 2,
+  info: 3
+};
+
 /** The envelope shape, with every field optional because a failure omits `data`. */
 export interface IResponseDetail<T> {
   data?: T | null;

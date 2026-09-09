@@ -8,6 +8,7 @@ export * from './ApiHttpClient';
 export * from './ApiService';
 export * from './ApiTokenStore';
 export * from './BuildingService';
+export * from './DocumentStorageService';
 export * from './LoginService';
 export * from './LookupService';
 export * from './ProjectService';

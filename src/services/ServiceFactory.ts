@@ -5,17 +5,31 @@ import { IApiServiceConfiguration } from '../models/ApiResponse';
 import { AadAccessTokenProvider, IAccessTokenProvider } from './AccessTokenProvider';
 import { AadApiHttpClient, AnonymousApiHttpClient, IApiHttpClient } from './ApiHttpClient';
 import { ApiService, IApiService, IResolvedApiConfiguration, resolveApiConfiguration } from './ApiService';
+import { BuildingService, IBuildingService } from './BuildingService';
 import { ILoginService, LoginService } from './LoginService';
 import { ILookupService, LookupService } from './LookupService';
 import { IProjectService, ProjectService } from './ProjectService';
+import { IProjectTemplateService, ProjectTemplateService } from './ProjectTemplateService';
+import { ISharePointFolderService, SharePointFolderService } from './SharePointFolderService';
+import { ISpHttpClient, SpRestHttpClient } from './SharePointHttpClient';
+import { ISharePointSiteService, SharePointSiteService } from './SharePointSiteService';
 
 /** All services available to the components, resolved as interfaces. */
 export interface IServiceContainer {
   readonly apiService: IApiService;
   readonly loginService: ILoginService;
   readonly projectService: IProjectService;
+  /** Write path of the project add/edit form: `POST api/Building`. */
+  readonly buildingService: IBuildingService;
+  /** What a project template defines - today its folder tree. */
+  readonly projectTemplateService: IProjectTemplateService;
   /** Reference data the project form binds its dropdowns to. */
   readonly lookupService: ILookupService;
+  /**
+   * The SharePoint sites the user may work in, read from SharePoint itself rather than
+   * from the XSProject Web API.
+   */
+  readonly sharePointSiteService: ISharePointSiteService;
 }
 
 /**
@@ -81,8 +95,19 @@ export class ServiceFactory {
       getEnvironment().auth.tokenResourceUri
     );
 
+    const projectTemplateService: IProjectTemplateService = new ProjectTemplateService(
+      apiService,
+      getEnvironment().api.endpoints.projectTemplates
+    );
+
+    // One SharePoint transport for both SharePoint services: it holds no per-call state, and
+    // sharing it keeps "which client talks to SharePoint" a single answer.
+    const spHttpClient: ISpHttpClient = new SpRestHttpClient(context.spHttpClient);
+    const folderService: ISharePointFolderService = new SharePointFolderService(spHttpClient);
+
     return {
       apiService,
+      projectTemplateService,
       loginService: new LoginService(
         apiService,
         tokenProvider,
@@ -90,7 +115,22 @@ export class ServiceFactory {
         ServiceFactory._resolveDomainUrl(context)
       ),
       projectService: new ProjectService(apiService, getEnvironment().api.endpoints.projects),
-      lookupService: new LookupService(apiService)
+      // Given the template service rather than reaching for it, so the save's own
+      // sequencing stays testable without a second transport.
+      buildingService: new BuildingService(
+        apiService,
+        projectTemplateService,
+        folderService,
+        getEnvironment().api.endpoints.building
+      ),
+      lookupService: new LookupService(apiService),
+      // Talks to SharePoint, not to the Web API, so it takes the SharePoint transport and
+      // the current site - whose `_api` endpoint the tenant-wide search query is addressed
+      // to.
+      sharePointSiteService: new SharePointSiteService(
+        spHttpClient,
+        ServiceFactory._resolveWebUrl(context)
+      )
     };
   }
 
@@ -104,6 +144,18 @@ export class ServiceFactory {
    */
   private static _resolveDomainUrl(context: BaseComponentContext): string {
     return context.pageContext?.web?.absoluteUrl || getEnvironment().auth.domainUrl;
+  }
+
+  /**
+   * The SharePoint site whose `_api` endpoint SharePoint requests are addressed to.
+   *
+   * Kept apart from {@link _resolveDomainUrl}, whose fallback is the XSProject application
+   * address - not a SharePoint site, and so not somewhere `_api/search/query` exists. A
+   * search query is tenant-wide whichever site receives it, so the page's own origin is a
+   * safe fallback if the site URL is ever unavailable.
+   */
+  private static _resolveWebUrl(context: BaseComponentContext): string {
+    return context.pageContext?.web?.absoluteUrl || window.location.origin;
   }
 
   private static _buildCacheKey(

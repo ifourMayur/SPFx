@@ -7,12 +7,16 @@ import type { IXsProjectState } from './IXsProjectState';
 import { escape } from '@microsoft/sp-lodash-subset';
 import AppShell from './AppShell';
 import Login from '../Login/Login';
+import SharePointSites from '../SharePointSites/SharePointSites';
 import welcomeDark from '../../assets/welcome-dark.png';
 import welcomeLight from '../../assets/welcome-light.png';
 import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm, IProjectFormFeatures, toDomainGroup } from '../../../../models/Building';
+import { IProjectSaveContext, IProjectSaveResult, toHostName } from '../../../../models/BuildingSave';
+import { IFolderProvisionFailure, IFolderProvisionResult } from '../../../../models/SharePointFolder';
 import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
 import { IProjectListRow, SAMPLE_PROJECT_ROWS, upsertProjectRow } from '../../../../models/ProjectListRow';
+import { ISharePointSite } from '../../../../models/SharePointSite';
 
 /** `BuildingResource.msgAddProject` / `msgUpdateProject`, including their double spaces. */
 const SAVE_MESSAGES = {
@@ -23,10 +27,11 @@ const SAVE_MESSAGES = {
 /**
  * Root component rendered by `XsProjectWebPart`.
  *
- * Owns the authenticated/not-authenticated view state: the router, the shared `Menu` and
+ * Owns the view state that gates the app, in two steps. The router, the shared `Menu` and
  * the pages it navigates to are only ever rendered once `Login` reports a successful
- * sign-in, using the `onLoginSucceeded`/`onLoginFailed` callbacks `Login` already exposes
- * rather than a second authentication mechanism.
+ * sign-in - using the `onLoginSucceeded`/`onLoginFailed` callbacks `Login` already exposes
+ * rather than a second authentication mechanism - and then only once `SharePointSites`
+ * reports the site the user chose to work in.
  *
  * It also owns the project rows and the forms saved during the session, because routing
  * unmounts the page that would otherwise hold them - see `IXsProjectState`.
@@ -50,10 +55,15 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       userDisplayName,
       projectService,
       lookupService,
-      loginService
+      loginService,
+      sharePointSiteService
     } = this.props;
-    const { isAuthenticated, login, rows, savedForms, notification } = this.state;
+    const { isAuthenticated, login, selectedSite, isChangingSite, rows, savedForms, notification } =
+      this.state;
     const userRoleId: number | undefined = login?.userRoleId;
+    // The app is shown only when a site has been chosen and the user is not in the middle
+    // of changing it.
+    const isSiteChosen: boolean = !!selectedSite && !isChangingSite;
 
     return (
       <section className={`${styles.xsProject}`}>
@@ -63,7 +73,15 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
           onLoginFailed={this._onLoginFailed}
         />
 
-        {isAuthenticated && (
+        {isAuthenticated && !isSiteChosen && (
+          <SharePointSites
+            siteService={sharePointSiteService}
+            selectedUrl={selectedSite?.url}
+            onSiteSelected={this._onSiteSelected}
+          />
+        )}
+
+        {isAuthenticated && isSiteChosen && selectedSite && (
           // The app's routes live in the URL fragment: a SPFx web part is a guest on a
           // SharePoint page whose path SharePoint itself owns and navigates.
           <HashRouter>
@@ -78,6 +96,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
               notification={notification}
+              siteTitle={selectedSite.title}
+              onChangeSite={this._onChangeSite}
               onSaveProject={this._onSaveProject}
               onToggleFavorite={this._onToggleFavorite}
               onDismissNotification={this._onDismissNotification}
@@ -136,28 +156,114 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
     this.setState({ isAuthenticated: false, login: undefined });
   };
 
+  private _onSiteSelected = (site: ISharePointSite): void => {
+    this.setState({ selectedSite: site, isChangingSite: false });
+  };
+
   /**
-   * Records a saved project.
+   * Sends the user back to the picker.
    *
-   * Async because this is where a `BuildingService.save()` call belongs: the form already
-   * awaits this promise, shows its saving state while it is pending, and reports a
-   * rejection as a form-level error. Nothing is sent anywhere today.
+   * Only the site changes: the sign-in, the project rows and the forms saved this session
+   * all survive, because changing site is a change of where the user is working - not a
+   * sign-out.
+   */
+  private _onChangeSite = (): void => {
+    this.setState({ isChangingSite: true });
+  };
+
+  /**
+   * Saves a project through `POST api/Building`, then records the result locally.
+   *
+   * The API call is awaited rather than fired and forgotten: `ProjectAddEdit` shows its
+   * saving state while this promise is pending, navigates back to the listing when it
+   * resolves, and renders a rejection as a form-level error with the user's input intact.
+   * So everything below the call only runs once the API has accepted the save - which is
+   * also why nothing is caught here.
+   *
+   * The listing rows are still local sample data, so the saved project is folded into them
+   * here, under the id the API assigned rather than a locally allocated one.
    */
   private _onSaveProject = async (form: IBuildingForm): Promise<void> => {
-    const isUpdate: boolean = form.id > 0;
+    const result: IProjectSaveResult = await this.props.buildingService.saveProject(
+      form,
+      this._getSaveContext()
+    );
 
-    this.setState((state: IXsProjectState) => {
-      const result = upsertProjectRow(state.rows, form);
+    const saved: IBuildingForm = { ...form, id: result.projectId };
 
-      return {
-        rows: result.rows,
-        // Stored under the id the row actually got, so a project created with `id: 0`
-        // can be reopened for editing under its new id.
-        savedForms: { ...state.savedForms, [result.id]: { ...form, id: result.id } },
-        notification: isUpdate ? SAVE_MESSAGES.updated : SAVE_MESSAGES.added
-      };
-    });
+    this.setState((state: IXsProjectState) => ({
+      // `upsertProjectRow` adds an id it has not seen rather than dropping it, which is
+      // what puts a newly created project at the top of the list.
+      rows: upsertProjectRow(state.rows, saved).rows,
+      // Stored under the id the API gave it, so a project created with `id: 0` can be
+      // reopened for editing under its new id.
+      savedForms: { ...state.savedForms, [result.projectId]: saved },
+      notification: XsProject._toSaveNotification(result, this.state.selectedSite)
+    }));
   };
+
+  /**
+   * The message shown on the listing after a save.
+   *
+   * Names where the folders went, because that is the only way to check them: the Web API
+   * is not told their ids yet, so nothing else in the app can show them. A site with no
+   * folders to report - an update, or a template with an empty tree - just gets the
+   * reference application's own save message.
+   */
+  private static _toSaveNotification(
+    result: IProjectSaveResult,
+    site: ISharePointSite | undefined
+  ): string {
+    const saved: string = result.isCreated ? SAVE_MESSAGES.added : SAVE_MESSAGES.updated;
+    const provision: IFolderProvisionResult | undefined = result.folderProvision;
+
+    if (!provision) {
+      return saved;
+    }
+
+    const provisioned: number = provision.created.length + provision.skipped.length;
+    const failed: string[] = provision.failed.map((failure: IFolderProvisionFailure) => failure.path);
+    const where: string = site ? ` in ${site.title}` : '';
+    const parts: string[] = [saved];
+
+    if (provisioned > 0) {
+      parts.push(`${provisioned} folder(s) ready${where} - check ${provision.rootUrl}`);
+    }
+
+    if (failed.length > 0) {
+      // Named rather than counted: which folder failed is what tells the user whether one
+      // branch was refused or the whole library was.
+      parts.push(`${failed.length} folder(s) could not be created: ${failed.join(', ')}`);
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
+   * The values `POST api/Building` needs that the form does not hold.
+   *
+   * The reference reads all of these out of the MVC session (step 3 of the process
+   * document); a SPFx bundle has no session, so they come from the sign-in response and
+   * the hosting page instead.
+   */
+  private _getSaveContext(): IProjectSaveContext {
+    const login: ILoginResponse | undefined = this.state.login;
+
+    return {
+      clientId: login?.id || 0,
+      clientName: login?.userName || this.props.userDisplayName,
+      accountId: login?.accountId || 0,
+      // `Request.Host.Value` in the reference: the host of the application the user is
+      // signed in to, falling back to the SharePoint page hosting this web part.
+      domainName: toHostName(login?.domainUrl || '') || window.location.host,
+      companyName: login?.masterCompanyName || login?.companyName || '',
+      // The reference resolves a file path on the server; a browser has no equivalent.
+      companyLogo: '',
+      // Where a new project's folders are created. Always set by the time a save can run:
+      // the app is not rendered until a site has been chosen.
+      site: this.state.selectedSite
+    };
+  }
 
   private _onToggleFavorite = (projectId: number): void => {
     this.setState((state: IXsProjectState) => ({

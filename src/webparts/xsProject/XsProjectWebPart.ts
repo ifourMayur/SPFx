@@ -42,8 +42,10 @@ export default class XsProjectWebPart extends BaseClientSideWebPart<IXsProjectWe
         environmentMessage: this._environmentMessage,
         userDisplayName: this.context.pageContext.user.displayName,
         projectService: services.projectService,
+        buildingService: services.buildingService,
         lookupService: services.lookupService,
-        loginService: services.loginService
+        loginService: services.loginService,
+        sharePointSiteService: services.sharePointSiteService
       }
     );
 

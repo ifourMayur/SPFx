@@ -1,6 +1,7 @@
 import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm } from '../../../../models/Building';
 import { IProjectListRow } from '../../../../models/ProjectListRow';
+import { ISharePointSite } from '../../../../models/SharePointSite';
 
 export interface IXsProjectState {
   /** Set from `Login`'s `onLoginSucceeded`/`onLoginFailed` callbacks; gates the whole app. */
@@ -13,6 +14,20 @@ export interface IXsProjectState {
    * The application token it also carries is not used anywhere yet.
    */
   login?: ILoginResponse;
+  /**
+   * The site chosen in `SharePointSites`; gates the app the way `isAuthenticated` does.
+   *
+   * Owned here rather than by the picker because it outlives it: the picker unmounts as
+   * soon as the app renders.
+   */
+  selectedSite?: ISharePointSite;
+  /**
+   * True while the user is back in the picker to change site.
+   *
+   * A flag rather than clearing `selectedSite`, so the picker can show the site currently
+   * in use as its selection instead of presenting itself as a first-time choice.
+   */
+  isChangingSite?: boolean;
   /**
    * Project rows shown by `ProjectList`.
    *

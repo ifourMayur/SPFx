@@ -1,0 +1,85 @@
+.sharePointSites {
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.title {
+  margin: 0 0 0.5em;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 0.75em;
+  border-left: 4px solid transparent;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.pending {
+  border-left-color: "[theme:themePrimary, default: #0078d4]";
+}
+
+.failure {
+  display: block;
+  border-left-color: "[theme:errorText, default: #a4262c]";
+  color: "[theme:errorText, default: #a4262c]";
+}
+
+.empty {
+  display: block;
+  border-left-color: "[theme:warningText, default: #797775]";
+}
+
+.field {
+  max-width: 28em;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25em;
+  font-weight: 600;
+}
+
+.select {
+  width: 100%;
+  padding: 0.4em 0.5em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+}
+
+.action {
+  margin-top: 0.75em;
+  padding: 0.4em 1em;
+  border: none;
+  cursor: pointer;
+  color: "[theme:white, default: #ffffff]";
+  background-color: "[theme:themePrimary, default: #0078d4]";
+
+  &:hover {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+
+  &:disabled {
+    cursor: default;
+    background-color: "[theme:neutralTertiary, default: #a19f9d]";
+  }
+}
+
+.spinner {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternary, default: #d0d0d0]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

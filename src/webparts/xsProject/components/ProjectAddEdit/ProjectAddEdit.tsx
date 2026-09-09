@@ -41,8 +41,19 @@ type BooleanFormField = {
 /** Keys of `IBuildingForm` holding a multi-select's chosen ids. */
 type MultiSelectFormField = 'userIds' | 'spatialBreakdownIds';
 
-/** Image types the reference's file input accepts. */
-const ACCEPTED_IMAGE_TYPES: string = 'image/jpg,image/png,image/jpeg';
+/**
+ * Image types the reference's file input accepts.
+ *
+ * Used both for the `accept` hint and to check the chosen file, because `accept` only
+ * filters the file picker's default view - a user can still pick anything.
+ */
+const ACCEPTED_IMAGE_TYPES: string[] = ['image/jpg', 'image/png', 'image/jpeg'];
+
+/** Shown when the chosen file is not an image, or cannot be read. */
+const IMAGE_MESSAGES = {
+  wrongType: 'The project image must be a JPG or PNG file.',
+  unreadable: 'That image could not be read. Please choose it again.'
+};
 
 /**
  * Add / edit form for a project, ported from the reference application's
@@ -61,15 +72,14 @@ const ACCEPTED_IMAGE_TYPES: string = 'image/jpg,image/png,image/jpeg';
  * `ILookupService` - see that interface for the endpoint-by-dropdown table. They are
  * fetched once on mount, in parallel, and the form is not shown until they arrive.
  *
- * Saving is still local: the finished form goes to `onSave` rather than to the API.
- * `onSave` is the single seam where a `POST api/Building` call belongs.
+ * Saving goes through `onSave`, the single seam the caller uses to reach the API - today
+ * `IBuildingService.saveProject`, which posts to `api/Building`. This component stays
+ * unaware of that: it awaits the promise, shows its saving state while it is pending, and
+ * renders a rejection as the form-level error with the user's input left intact.
  */
 export default class ProjectAddEdit extends React.Component<IProjectAddEditProps, IProjectAddEditState> {
   /** Guards against completing a save after the component has been unmounted. */
   private _isActive: boolean = false;
-
-  /** Object URL currently shown as the image preview, so it can be revoked when replaced. */
-  private _previewObjectUrl: string | undefined;
 
   /** Form to restore when Reset is pressed. */
   private readonly _initialForm: IBuildingForm;
@@ -102,7 +112,6 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
 
   public componentWillUnmount(): void {
     this._isActive = false;
-    this._revokePreview();
   }
 
   public render(): React.ReactElement<IProjectAddEditProps> {
@@ -356,7 +365,7 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
           <input
             type="file"
             className={styles.visuallyHidden}
-            accept={ACCEPTED_IMAGE_TYPES}
+            accept={ACCEPTED_IMAGE_TYPES.join(',')}
             disabled={this.state.isSaving}
             onChange={this._onImageChange}
           />
@@ -726,17 +735,53 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     return FOLDER_LEVELS[FOLDER_LEVELS.indexOf(level) + 1];
   }
 
+  /**
+   * Loads the chosen file as a `data:` URL.
+   *
+   * A data URL rather than the `URL.createObjectURL` blob the reference's `loadImage`
+   * uses, because the same string has to do two jobs: show the live preview, and carry the
+   * Base64 bytes `POST api/Building` stores in `ImageBytes`. A blob URL is a handle to
+   * memory in this tab, so it can do the first job but never the second.
+   *
+   * The reference silently ignores a file whose content type it does not recognise
+   * (finding 14 of the process document); this says so and leaves the previous image
+   * in place.
+   */
   private _onImageChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    const file: File | undefined = event.target.files ? event.target.files[0] : undefined;
+    const input: HTMLInputElement = event.target;
+    const file: File | undefined = input.files ? input.files[0] : undefined;
     if (!file) {
       return;
     }
 
-    // Same live preview as the reference's `loadImage`, but the previous URL is released
-    // first so replacing the image repeatedly does not leak blobs.
-    this._revokePreview();
-    this._previewObjectUrl = URL.createObjectURL(file);
-    this._setFormValue('imageDataUrl', this._previewObjectUrl);
+    // Cleared either way, so choosing the same file again always re-fires `change`.
+    input.value = '';
+
+    if (ACCEPTED_IMAGE_TYPES.indexOf((file.type || '').toLowerCase()) < 0) {
+      this.setState({ saveError: IMAGE_MESSAGES.wrongType });
+      return;
+    }
+
+    const reader: FileReader = new FileReader();
+
+    reader.onload = (): void => {
+      if (!this._isActive) {
+        return;
+      }
+
+      this.setState((state: IProjectAddEditState) => ({
+        form: { ...state.form, imageDataUrl: String(reader.result) },
+        saveError: undefined
+      }));
+    };
+
+    reader.onerror = (): void => {
+      if (this._isActive) {
+        this.setState({ saveError: IMAGE_MESSAGES.unreadable });
+      }
+    };
+
+    reader.readAsDataURL(file);
   };
 
   /**
@@ -746,7 +791,6 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
    * the hosting SharePoint page with it - so the initial state is restored instead.
    */
   private _onReset = (): void => {
-    this._revokePreview();
     this.setState({ form: { ...this._initialForm }, errors: {}, saveError: undefined });
   };
 
@@ -788,13 +832,5 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     this.setState((state: IProjectAddEditState) => ({
       form: { ...state.form, [field]: value } as IBuildingForm
     }));
-  }
-
-  /** Releases the current preview blob, if this component created one. */
-  private _revokePreview(): void {
-    if (this._previewObjectUrl) {
-      URL.revokeObjectURL(this._previewObjectUrl);
-      this._previewObjectUrl = undefined;
-    }
   }
 }

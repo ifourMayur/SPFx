@@ -28,6 +28,10 @@ export interface IAppShellProps {
   /** Whether this user may open the project form, from `canOpenProjectForm`. */
   canOpenForm: boolean;
   notification?: string;
+  /** Title of the SharePoint site chosen in `SharePointSites`, named in the site bar. */
+  siteTitle: string;
+  /** Returns the user to the site picker. */
+  onChangeSite: () => void;
   onSaveProject: (form: IBuildingForm) => Promise<void>;
   onToggleFavorite: (projectId: number) => void;
   onDismissNotification: () => void;
@@ -99,6 +103,18 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
       <Menu activePath={location.pathname} onNavigate={goTo} />
 
       <div className={styles.content}>
+        {/* Which site the session is working in is not obvious from any page, and it is
+            chosen before the app renders - so the shell says so, and is where the choice
+            is revisited. */}
+        <div className={styles.siteBar}>
+          <span className={styles.siteName}>
+            Site: <strong>{props.siteTitle}</strong>
+          </span>
+          <button type="button" className={styles.changeSite} onClick={props.onChangeSite}>
+            Change site
+          </button>
+        </div>
+
         <Routes>
           <Route path={ROUTE_PATHS.projectList} element={listing} />
           <Route path={ROUTE_PATHS.projectAdd} element={form('add')} />

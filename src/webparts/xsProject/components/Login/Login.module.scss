@@ -44,30 +44,6 @@
   }
 }
 
-.response {
-  margin-top: 0.5em;
-  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
-  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
-}
-
-.responseSummary {
-  padding: 0.4em 0.75em;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.responseBody {
-  // A base64 profile picture makes for a very long line, so the payload scrolls in place
-  // instead of stretching the web part out of shape.
-  max-height: 20em;
-  margin: 0;
-  padding: 0 0.75em 0.75em;
-  overflow: auto;
-  white-space: pre;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 0.85em;
-}
-
 .spinner {
   width: 1em;
   height: 1em;

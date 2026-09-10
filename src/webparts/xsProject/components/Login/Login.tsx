@@ -8,14 +8,18 @@ import { ILoginFailure, ILoginResponse, ILoginState, resolveLoginFailure } from 
 /** Source name used for SPFx log entries emitted by this component. */
 const LOG_SOURCE: string = 'Login';
 
+/** Shown once the handshake completes. Fixed text: nothing from the response is rendered. */
+const SUCCESS_MESSAGE: string = 'User authenticated successfully.';
+
 /**
  * Signs the current Microsoft 365 user in to the XSProject Web API.
  *
  * The component owns nothing but view state: `ILoginService` acquires the SPFx access
  * token and posts it to `Authenticate/SPFxLogin`, so the token never reaches this class,
- * the rendered output or browser storage. The service writes the complete API response to
- * the console, and it is rendered under the success message, for development
- * verification - see `showResponse` on `ILoginProps`.
+ * the rendered output or browser storage. The response is not held in state or rendered
+ * either - it carries the application and refresh tokens, and a fixed confirmation is all
+ * the user needs. `LoginService._logResponse` still dumps it to the console on a debug
+ * build for development verification.
  *
  * The handshake runs on mount unless `autoLogin` is `false`, in which case the user
  * triggers it from the button.
@@ -43,7 +47,7 @@ export default class Login extends React.Component<ILoginProps, ILoginState> {
   }
 
   public render(): React.ReactElement<ILoginProps> {
-    const { isLoading, isAuthenticated, response, failure } = this.state;
+    const { isLoading, isAuthenticated, failure } = this.state;
 
     return (
       <section className={styles.login}>
@@ -57,18 +61,9 @@ export default class Login extends React.Component<ILoginProps, ILoginState> {
         )}
 
         {!isLoading && isAuthenticated && (
-          <>
-            <div className={`${styles.status} ${styles.success}`} role="status" aria-live="polite">
-              <span>{Login._getSuccessMessage(response)}</span>
-            </div>
-
-            {response && this.props.showResponse !== false && (
-              <details className={styles.response} open>
-                <summary className={styles.responseSummary}>API response</summary>
-                <pre className={styles.responseBody}>{JSON.stringify(response, undefined, 2)}</pre>
-              </details>
-            )}
-          </>
+          <div className={`${styles.status} ${styles.success}`} role="status" aria-live="polite">
+            <span>{SUCCESS_MESSAGE}</span>
+          </div>
         )}
 
         {!isLoading && failure && (
@@ -99,7 +94,7 @@ export default class Login extends React.Component<ILoginProps, ILoginState> {
    * `resolveLoginFailure`, so this method never inspects status codes itself.
    */
   private async _login(): Promise<void> {
-    this.setState({ isLoading: true, isAuthenticated: false, response: undefined, failure: undefined });
+    this.setState({ isLoading: true, isAuthenticated: false, failure: undefined });
 
     let response: ILoginResponse | undefined;
     let failure: ILoginFailure | undefined;
@@ -111,7 +106,9 @@ export default class Login extends React.Component<ILoginProps, ILoginState> {
     }
 
     if (this._isActive) {
-      this.setState({ isLoading: false, isAuthenticated: !failure, response, failure });
+      // The response itself is deliberately not stored: it carries the application and
+      // refresh tokens, which would then be readable in React DevTools.
+      this.setState({ isLoading: false, isAuthenticated: !failure, failure });
     }
 
     // Notified outside the try block, so a handler that throws is not reported back to the
@@ -142,41 +139,4 @@ export default class Login extends React.Component<ILoginProps, ILoginState> {
   private _onSignInClick = (): void => {
     this._runLogin();
   };
-
-  /**
-   * Names the signed-in user from whichever identity field the API populated.
-   *
-   * `contactpersoon` is the display name on the XSProject user record, with the account
-   * name and then the mailbox as fallbacks.
-   */
-  private static _getSuccessMessage(response: ILoginResponse | undefined): string {
-    const name: string = Login._firstNonEmpty([
-      response?.contactpersoon,
-      response?.userName,
-      response?.email
-    ]);
-    const company: string = Login._firstNonEmpty([
-      response?.companyName,
-      response?.bedrijf,
-      response?.masterCompanyName
-    ]);
-
-    if (!name) {
-      return 'Signed in to XSProject.';
-    }
-
-    return company ? `Signed in to XSProject as ${name} (${company}).` : `Signed in to XSProject as ${name}.`;
-  }
-
-  /** First value that holds text once trimmed, or an empty string. */
-  private static _firstNonEmpty(values: (string | undefined)[]): string {
-    for (let index: number = 0; index < values.length; index++) {
-      const value: string = (values[index] || '').trim();
-      if (value) {
-        return value;
-      }
-    }
-
-    return '';
-  }
 }

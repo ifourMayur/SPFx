@@ -347,56 +347,65 @@
   }
 }
 
-/* Stands in for the reference's `$.notify(...)` toast after a save. */
-.notification {
+/* Stands in for the reference's `$.notify(...)` toast after a save - now an actual
+   floating toast rather than a banner in the document flow, so this transient
+   acknowledgement does not push the table down and reflow what the user is reading.
+   The z-index clears SharePoint's own page chrome. */
+.toastHost {
+  position: fixed;
+  top: 1.5em;
+  right: 1.5em;
+  z-index: 1000001;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1em;
-  margin-bottom: 1em;
-  padding: 0.75em 1em;
-  border-left: 4px solid "[theme:greenDark, default: #107c10]";
-  background-color: "[theme:neutralLighterAlt, default: #f3f9f1]";
+  justify-content: flex-end;
+  pointer-events: none;
 }
 
-.notificationClose {
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  max-width: 26em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:greenDark, default: #107c10]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  box-shadow: 0 3.2px 7.2px rgba(0, 0, 0, 0.132), 0 0.6px 1.8px rgba(0, 0, 0, 0.108);
+  pointer-events: auto;
+  animation: toastIn 0.2s ease-out;
+}
+
+.toastIcon {
+  flex: none;
+  color: "[theme:greenDark, default: #107c10]";
+  font-weight: 700;
+}
+
+.toastMessage {
+  flex: 1 1 auto;
+}
+
+.toastClose {
   flex: none;
   padding: 0 0.35em;
   border: 0;
   background: none;
-  color: "[theme:bodyText, default: #323130]";
+  color: "[theme:neutralSecondary, default: #605e5c]";
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
 
-.folderIds {
-  margin-bottom: 1em;
-  padding: 0.75em 1em;
-  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
-  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
-  font-size: 0.9em;
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5em);
+  }
 
-  summary {
-    cursor: pointer;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.folderIdTable {
-  width: 100%;
-  margin-top: 0.75em;
-  border-collapse: collapse;
-
-  th,
-  td {
-    padding: 0.35em 0.75em;
-    border-bottom: 1px solid "[theme:neutralLighter, default: #f3f2f1]";
-    text-align: left;
-  }
-}
-
-.folderIdValue {
-  font-family: "[theme:fontFamilyMonospace, default: Consolas, monospace]";
-  color: "[theme:neutralSecondary, default: #605e5c]";
-  word-break: break-all;
-}

@@ -115,7 +115,8 @@ function stubBuildingService(): IBuildingService {
         isCreated,
         response: { id: projectId },
         projectTemplateId: 1,
-        // What `Document/AddDocumentStorageDetails` was told, which the listing prints.
+        // What `Document/AddDocumentStorageDetails` was told. Deliberately not rendered
+        // anywhere - the tests below hold that line.
         documentStorage: isCreated
           ? {
               isRecorded: true,
@@ -453,7 +454,7 @@ describe('XsProject', () => {
     expect(host.textContent).toContain('of 18 entries');
   });
 
-  it('says where the SharePoint folders went, so they can be checked', async () => {
+  it('reports a save as a toast only, without what the API answered', async () => {
     await mount(UserRole.Admin);
     await clickText('Project');
     await clickText('+ Add Project');
@@ -463,36 +464,33 @@ describe('XsProject', () => {
     setValue('#project-postcode', '1015 CJ');
     await clickText('Save');
 
-    // Named after the site the picker chose (`SITES[0]`), not after anything the save
-    // reported - so the message says where the user should actually go and look.
-    // Created and already-present folders both count as ready: a re-save is not a failure.
-    expect(host.textContent).toContain('3 folder(s) ready in Construction');
-    expect(host.textContent).toContain(
-      'https://contoso.sharepoint.com/sites/projects/Shared%20Documents/Smoke test project'
-    );
-    // A failure is named rather than counted, so one refused branch is distinguishable
-    // from a refused library.
+    expect(host.textContent).toContain('Project  Added successfully!');
+    // The SharePoint ids bound onto the project's folder tree are a development detail:
+    // `BuildingService` logs the whole result, and the listing prints none of it.
+    expect(host.textContent).not.toContain('guid:');
+    expect(host.textContent).not.toContain('SharePoint folder id');
+    // Nor the folder tally or the library URL the message used to spell out.
+    expect(host.textContent).not.toContain('folder(s) ready');
+    expect(host.textContent).not.toContain('Shared%20Documents');
+  });
+
+  it('still names folders that could not be created, the one thing the toast keeps', async () => {
+    await mount(UserRole.Admin);
+    await clickText('Project');
+    await clickText('+ Add Project');
+
+    setValue('#project-buildingName', 'Smoke test project');
+    setValue('#project-address', 'Keizersgracht 1');
+    setValue('#project-postcode', '1015 CJ');
+    await clickText('Save');
+
+    // The folder steps never fail the save, so this is the only signal the user gets that
+    // a folder they will go looking for is not there. Named rather than counted: one
+    // refused branch has to be distinguishable from a refused library.
     expect(host.textContent).toContain('1 folder(s) could not be created: Roof/Locked');
   });
 
-  it('lists the SharePoint folder ids the Web API was told about', async () => {
-    await mount(UserRole.Admin);
-    await clickText('Project');
-    await clickText('+ Add Project');
-
-    setValue('#project-buildingName', 'Smoke test project');
-    setValue('#project-address', 'Keizersgracht 1');
-    setValue('#project-postcode', '1015 CJ');
-    await clickText('Save');
-
-    // The bound model itself, folder by folder - the ids are the only way to tell which
-    // SharePoint folder a project's folder became.
-    expect(host.textContent).toContain('Drawings');
-    expect(host.textContent).toContain('guid:Roof/Drawings');
-    expect(host.textContent).toContain('guid:Roof');
-  });
-
-  it('clears the folder ids along with the message they belong to', async () => {
+  it('clears the toast when the user dismisses it', async () => {
     await mount(UserRole.Admin);
     await clickText('Project');
     await clickText('+ Add Project');
@@ -504,7 +502,7 @@ describe('XsProject', () => {
 
     await clickText('×');
 
-    expect(host.textContent).not.toContain('guid:Roof/Drawings');
+    expect(host.textContent).not.toContain('Project  Added successfully!');
   });
 
   it('reopens a created project for editing with its values intact', async () => {

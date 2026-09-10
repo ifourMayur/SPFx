@@ -2,11 +2,6 @@ import * as React from 'react';
 import styles from './ProjectList.module.scss';
 import type { IProjectListProps } from './IProjectListProps';
 import { IProjectListRow, PhaseKey, PhaseStatus } from '../../../../models/ProjectListRow';
-import {
-  IDocumentStorageResult,
-  IFolderIdRow,
-  toFolderIdRows
-} from '../../../../models/DocumentStorage';
 
 /** Columns the table can be sorted by. */
 type SortKey = 'name' | PhaseKey | 'maintenance';
@@ -29,7 +24,7 @@ const CIRCLE_CLASS_NAME: Record<PhaseStatus, string> = {
   danger: styles.circleDanger
 };
 
-/** How long a success message stays on screen, matching the reference's `autoHideDelay`. */
+/** How long the toast stays on screen, matching the reference's `autoHideDelay`. */
 const NOTIFICATION_TIMEOUT_MS: number = 3000;
 
 interface IProjectListState {
@@ -51,9 +46,13 @@ interface IProjectListState {
  * The rows themselves come in as a prop - `XsProject` owns them so they survive
  * navigating to the add/edit form and back. Everything this component keeps in state is
  * presentation only: the search term, sort, page and which row menu is open.
+ *
+ * A save reports itself as a single self-dismissing toast, nothing more: what the Web API
+ * answered - the project payload and the SharePoint ids bound onto its folder tree - is a
+ * development detail, and `BuildingService` already logs it.
  */
 export default class ProjectList extends React.Component<IProjectListProps, IProjectListState> {
-  /** Pending auto-dismiss of the success message. */
+  /** Pending auto-dismiss of the toast. */
   private _notificationTimer: number | undefined;
 
   public constructor(props: IProjectListProps) {
@@ -86,7 +85,7 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
   }
 
   public render(): React.ReactElement<IProjectListProps> {
-    const { canAddEdit, notification, documentStorage } = this.props;
+    const { canAddEdit, notification } = this.props;
     const { search, pageSize, showFavoritesOnly, isListView } = this.state;
     const filteredRows: IProjectListRow[] = this._getFilteredRows();
     const sortedRows: IProjectListRow[] = this._getSortedRows(filteredRows);
@@ -101,20 +100,21 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
     return (
       <section className={styles.projectList}>
         {notification && (
-          <div className={styles.notification} role="status" aria-live="polite">
-            <span>{notification}</span>
-            <button
-              type="button"
-              className={styles.notificationClose}
-              aria-label="Dismiss"
-              onClick={this._onDismissNotification}
-            >
-              &times;
-            </button>
+          <div className={styles.toastHost}>
+            <div className={styles.toast} role="status" aria-live="polite">
+              <span className={styles.toastIcon} aria-hidden="true">&#10003;</span>
+              <span className={styles.toastMessage}>{notification}</span>
+              <button
+                type="button"
+                className={styles.toastClose}
+                aria-label="Dismiss"
+                onClick={this._onDismissNotification}
+              >
+                &times;
+              </button>
+            </div>
           </div>
         )}
-
-        {documentStorage && ProjectList._renderFolderIds(documentStorage)}
 
         {/* Gated exactly as the reference gates it: `@if (ViewBag.AddEditAccessRights)`. */}
         {canAddEdit && (
@@ -171,43 +171,6 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
           </div>
         </div>
       </section>
-    );
-  }
-
-  /**
-   * The SharePoint id recorded for each of the new project's folders.
-   *
-   * Shown because nothing else in the app can: the ids live in the Web API's
-   * `DocumentStorageDetails` and `ProjectSubFolder` rows, and the listing has no other
-   * view onto them. Folders are indented by depth so the tree is still readable flattened.
-   */
-  private static _renderFolderIds(documentStorage: IDocumentStorageResult): React.ReactElement {
-    const folderIds: IFolderIdRow[] = toFolderIdRows(documentStorage.model, documentStorage.rootName);
-
-    return (
-      <details className={styles.folderIds} open>
-        <summary>
-          {documentStorage.isRecorded
-            ? `SharePoint folder ids recorded for ${folderIds.length} folder(s)`
-            : `SharePoint folder ids could not be recorded: ${documentStorage.message}`}
-        </summary>
-        <table className={styles.folderIdTable}>
-          <thead>
-            <tr>
-              <th>Folder</th>
-              <th>SharePoint id</th>
-            </tr>
-          </thead>
-          <tbody>
-            {folderIds.map((row: IFolderIdRow, index: number) => (
-              <tr key={`${row.id}-${index}`}>
-                <td style={{ paddingLeft: `${0.75 + row.depth * 1.25}em` }}>{row.name}</td>
-                <td className={styles.folderIdValue}>{row.id}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </details>
     );
   }
 
@@ -391,7 +354,7 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
     return SORT_RANK[row[key]];
   }
 
-  /** Restarts the auto-dismiss countdown for the current success message. */
+  /** Restarts the auto-dismiss countdown for the current toast. */
   private _scheduleNotificationDismiss(): void {
     this._clearNotificationTimer();
 

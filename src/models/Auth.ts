@@ -125,7 +125,11 @@ export interface ILoginFailure {
 export interface ILoginState {
   isLoading: boolean;
   isAuthenticated: boolean;
-  response?: ILoginResponse;
+  /**
+   * No `response` field on purpose: the sign-in payload carries the application and
+   * refresh tokens, so it is never held in component state, where React DevTools would
+   * read it back out. `Login` renders a fixed confirmation instead.
+   */
   failure?: ILoginFailure;
 }
 

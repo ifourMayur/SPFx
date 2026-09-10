@@ -11,7 +11,6 @@ import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
-import { IDocumentStorageResult } from '../../../../models/DocumentStorage';
 import { IProjectListRow } from '../../../../models/ProjectListRow';
 import { ILookupService } from '../../../../services/LookupService';
 import { IProjectService } from '../../../../services/ProjectService';
@@ -28,9 +27,8 @@ export interface IAppShellProps {
   canAddEdit: boolean;
   /** Whether this user may open the project form, from `canOpenProjectForm`. */
   canOpenForm: boolean;
+  /** Save confirmation, shown by `ProjectList` as a toast. */
   notification?: string;
-  /** What the last save recorded on the Web API, printed under the notification. */
-  documentStorage?: IDocumentStorageResult;
   /** Title of the SharePoint site chosen in `SharePointSites`, named in the site bar. */
   siteTitle: string;
   /** Returns the user to the site picker. */
@@ -80,7 +78,6 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
       rows={props.rows}
       canAddEdit={props.canAddEdit}
       notification={props.notification}
-      documentStorage={props.documentStorage}
       onAddProject={goToAdd}
       onEditProject={goToEdit}
       onToggleFavorite={props.onToggleFavorite}

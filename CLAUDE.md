@@ -32,6 +32,7 @@ heft --help                  # list every available Heft action
 - Run tests by name: `heft test --test-name-pattern <regex>` (short flag `-t`).
 - Update snapshots: `heft test --update-snapshots` (short flag `-u`).
 - Linting runs inside the `build` phase (`@microsoft/eslint-config-spfx` react flat profile, see `eslint.config.js`) — it isn't a separate script; it runs automatically inside `heft build` / `heft test` / `heft start`.
+- `core.autocrlf` is `true` with no `.gitattributes`, so most `git` commands print `LF will be replaced by CRLF` warnings. That's noise, not a pending change — don't "fix" the line endings.
 
 ## Architecture
 
@@ -94,6 +95,7 @@ Tokens are transient values only: never rendered, never persisted, and not logge
 - The route table is declared once in `src/models/Navigation.ts` (`ROUTE_PATHS`, `DEFAULT_ROUTE_PATH`, `projectEditPath`) — models layer, so the router, the shared `Menu` and every page agree without depending on each other. Build concrete edit paths with `projectEditPath(id)` rather than interpolating `:id`.
 - `AppShell.tsx` renders `Menu` **once, outside `<Routes>`**, so adding a page cannot forget the navigation. Unrecognised paths `Navigate ... replace` to the default.
 - `XsProject` owns the project rows and the forms saved during the session, because routing unmounts the page that would otherwise hold them. Listing rows are still `SAMPLE_PROJECT_ROWS` (local sample data) — replace with a service call following the `Project`/`ProjectService` pattern when the data is available.
+- `XsProject.render` still ends with the Yeoman generator's boilerplate ("Well done, …" plus the SPFx links), *below* the gated app. It's leftover scaffolding, not part of the ported UI.
 
 ### The project save
 
@@ -106,9 +108,22 @@ Two rules to preserve when touching it:
 - An **update is refused** when the read-back comes back empty. `ProjectController.Update` assigns the image, SharePoint folder id and third-party fields from the request *unconditionally*, so a POST without them blanks the image and orphans the folders (see `IPreservedProjectFields`). The reference has no such guard because its Razor view round-trips them through hidden fields.
 - The folder steps are **never allowed to fail the save**. The project genuinely exists by then, so reporting failure would invite a duplicate. What couldn't be done comes back in the result instead (absent `templateFolders`, a `folderProvision` carrying failures, or a `documentStorage` saying the ids were not recorded).
 
-`ProjectList` prints what was recorded — folder name against SharePoint id — under the save notification, and clears it with that notification. It is the only place those ids are visible in the app.
+The save reports itself on the listing as a **single self-dismissing toast** carrying the reference's own `msgAddProject`/`msgUpdateProject` text, and nothing else. Folders that *failed* to be created are the one exception and stay named in it — the folder steps never fail the save, so that toast is the only signal the user gets that a folder they will look for isn't there. What the Web API answered, including the SharePoint ids bound onto the folder tree, is a development detail: `BuildingService` logs it, the UI doesn't show it.
 
 Still not implemented from the reference: the "rebind" second `POST api/Building` storing the folder tree's root id on the project itself, and tender folders — so a created project's own `sharepointFolderId` column stays empty even though its folders and their ids are now recorded.
+
+### The project form
+
+`ProjectAddEdit` is the largest component here and the port of `Views/Building/AddEdit.cshtml`. Its rules deliberately live in the models layer, so they can be tested without rendering anything:
+
+- `models/Building.ts` — `IBuildingForm` (everything the form edits) and `createEmptyBuildingForm`. `id: 0` means insert, matching the single `POST api/Building` endpoint. Field names keep the reference's Dutch-origin spellings (`plaats`, `contactpersoon`, `functie`, `telefoon`) so the mapping back to `BuildingModel`/`BuildingAddModel` stays obvious — the visible labels are English; don't rename the fields to match them.
+- `models/BuildingValidation.ts` — every rule from both places the reference enforces them (`BuildingAddModel` data annotations server-side, `saveProject` in the Razor view client-side). All rules are evaluated on each attempt rather than returning on the first failure, so the user isn't fixing one field per round trip.
+- `models/FolderTree.ts` — the `Folder → SubFolder → SubSubFolder → SubSubSubFolder` cascade: which levels to discard when a parent changes, keeping `FolderCascade` purely presentational. `ILookupService` performs the four level-by-level fetches the reference does.
+- `FolderCascade` and `MultiSelect` are the form's two shared controls.
+
+**Message strings are copied verbatim from the reference's resource files, double spaces included** — `'Project  Name is required'`, `'Project  Added successfully!'`. They look like typos and aren't; a ported screen is meant to read identically to the one it replaces.
+
+ED Controls (tag rows, ticket source) and KYP planning are absent on purpose: third-party integration sections, excluded from this screen.
 
 ### Permissions and per-tenant behaviour
 
@@ -138,6 +153,10 @@ Service tests run the real `ApiService` over a fake transport answering the exac
 ### Adding a new API resource
 
 Follow the `Project`/`ProjectService` pattern: define request/response shapes in `src/models/<Resource>.ts` (no imports outside `models/`), add an interface + implementation in `src/services/<Resource>Service.ts` built on `IApiService` — unwrapping through `unwrapResponseDetail` — add the controller route to `ENDPOINTS` in `src/config/environment.ts`, export both from the relevant `index.ts` barrels, then wire the new service into `IServiceContainer` in `ServiceFactory.ts` so components receive it as an injected prop instead of constructing it themselves.
+
+### Adding a new page
+
+Three coordinated edits and nothing else: a path in `ROUTE_PATHS` (`src/models/Navigation.ts`), a `<Route>` in `AppShell.tsx`, and an entry in `MENU_ITEMS` (`Menu.tsx`) — a leaf for a top-level item, or a `children` entry for a submenu. `Menu` is data-driven and rendered once by the shell, so no page carries navigation markup. `Document`, `Search` and `Suppliers` are "Coming soon" placeholders in exactly this shape, waiting on a backing endpoint.
 
 ### Multi-environment / multi-tenant packaging
 

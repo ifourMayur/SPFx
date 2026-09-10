@@ -14,12 +14,6 @@ export interface ILoginProps {
    * Leave unset to use the configured value.
    */
   domainUrl?: string;
-  /**
-   * Renders the API response under the success message. Defaults to `true` as a
-   * development aid; set it to `false` for production, where the payload carries the
-   * application token and refresh token the API issued.
-   */
-  showResponse?: boolean;
   /** Called with the Web API response after a successful sign-in. */
   onLoginSucceeded?: (response: ILoginResponse) => void;
   /** Called with the classified failure when sign-in does not complete. */

@@ -1,4 +1,3 @@
-import { IDocumentStorageResult } from '../../../../models/DocumentStorage';
 import { IProjectListRow } from '../../../../models/ProjectListRow';
 
 export interface IProjectListProps {
@@ -16,25 +15,14 @@ export interface IProjectListProps {
    * `ViewBag.AddEditAccessRights`.
    */
   canAddEdit: boolean;
-  /** Success message to show above the table, e.g. after a save. */
+  /** Success message to show as a self-dismissing toast, e.g. after a save. */
   notification?: string;
-  /**
-   * The SharePoint folder ids the last save reported to the Web API, listed under the
-   * notification.
-   *
-   * The only place they are visible: the ids are not shown anywhere else in the app, and
-   * a project row carries no folder information at all.
-   */
-  documentStorage?: IDocumentStorageResult;
   /** Called when the user asks to create a project. */
   onAddProject: () => void;
   /** Called with the project to edit. */
   onEditProject: (projectId: number) => void;
   /** Called with the project whose favorite star was clicked. */
   onToggleFavorite: (projectId: number) => void;
-  /**
-   * Clears {@link notification} and {@link documentStorage}, whether dismissed by the user
-   * or by the notification's own timer.
-   */
+  /** Clears {@link notification}, whether dismissed by the user or by the toast's timer. */
   onDismissNotification: () => void;
 }

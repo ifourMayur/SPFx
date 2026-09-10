@@ -65,8 +65,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       isChangingSite,
       rows,
       savedForms,
-      notification,
-      documentStorage
+      notification
     } = this.state;
     const userRoleId: number | undefined = login?.userRoleId;
     // The app is shown only when a site has been chosen and the user is not in the middle
@@ -104,7 +103,6 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
               notification={notification}
-              documentStorage={documentStorage}
               siteTitle={selectedSite.title}
               onChangeSite={this._onChangeSite}
               onSaveProject={this._onSaveProject}
@@ -207,48 +205,37 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       // Stored under the id the API gave it, so a project created with `id: 0` can be
       // reopened for editing under its new id.
       savedForms: { ...state.savedForms, [result.projectId]: saved },
-      notification: XsProject._toSaveNotification(result, this.state.selectedSite),
-      // Undefined on an update, or when nothing could be recorded - the listing then
-      // simply has no folder ids to show.
-      documentStorage: result.documentStorage
+      notification: XsProject._toSaveNotification(result)
     }));
   };
 
   /**
-   * The message shown on the listing after a save.
+   * The toast shown on the listing after a save.
    *
-   * Names where the folders went, because that is the only way to check them: the Web API
-   * is not told their ids yet, so nothing else in the app can show them. A site with no
-   * folders to report - an update, or a template with an empty tree - just gets the
-   * reference application's own save message.
+   * Just the outcome: the reference's own save message, and nothing about what the Web API
+   * answered. The SharePoint ids bound onto the project's folder tree used to be printed
+   * here because nothing else in the app could show them, but that is a development
+   * detail - `BuildingService` logs the whole result - not something to put in front of
+   * the user on every save.
+   *
+   * Failed folders are the one exception, and stay named. The folder steps deliberately
+   * never fail the save (the project exists by then, so reporting failure would invite a
+   * duplicate), which makes this the only signal the user gets that a folder they will
+   * look for is not there.
    */
-  private static _toSaveNotification(
-    result: IProjectSaveResult,
-    site: ISharePointSite | undefined
-  ): string {
+  private static _toSaveNotification(result: IProjectSaveResult): string {
     const saved: string = result.isCreated ? SAVE_MESSAGES.added : SAVE_MESSAGES.updated;
     const provision: IFolderProvisionResult | undefined = result.folderProvision;
 
-    if (!provision) {
+    if (!provision || provision.failed.length === 0) {
       return saved;
     }
 
-    const provisioned: number = provision.created.length + provision.skipped.length;
+    // Named rather than counted: which folder failed is what tells the user whether one
+    // branch was refused or the whole library was.
     const failed: string[] = provision.failed.map((failure: IFolderProvisionFailure) => failure.path);
-    const where: string = site ? ` in ${site.title}` : '';
-    const parts: string[] = [saved];
 
-    if (provisioned > 0) {
-      parts.push(`${provisioned} folder(s) ready${where} - check ${provision.rootUrl}`);
-    }
-
-    if (failed.length > 0) {
-      // Named rather than counted: which folder failed is what tells the user whether one
-      // branch was refused or the whole library was.
-      parts.push(`${failed.length} folder(s) could not be created: ${failed.join(', ')}`);
-    }
-
-    return parts.join(' ');
+    return `${saved} ${failed.length} folder(s) could not be created: ${failed.join(', ')}`;
   }
 
   /**
@@ -285,14 +272,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
     }));
   };
 
-  /**
-   * Clears the save message and the folder ids together.
-   *
-   * They are one report of one save: leaving the ids on screen after the message that
-   * introduced them has gone would present them as the state of whatever the user does
-   * next.
-   */
+  /** Clears the save toast, whether dismissed by the user or by its own timer. */
   private _onDismissNotification = (): void => {
-    this.setState({ notification: undefined, documentStorage: undefined });
+    this.setState({ notification: undefined });
   };
 }

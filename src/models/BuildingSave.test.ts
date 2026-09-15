@@ -9,7 +9,8 @@ import {
   toHostName,
   toImageBytes,
   toMomData,
-  toPreservedFields
+  toPreservedFields,
+  toRebindRequest
 } from './BuildingSave';
 
 /** A form filled in the way `validateBuildingForm` would let through. */
@@ -357,5 +358,47 @@ describe('toHostName', () => {
 
   it('returns an empty string for an empty value, so the caller can fall back', () => {
     expect(toHostName('')).toBe('');
+  });
+});
+
+describe('toRebindRequest', () => {
+  /** The body an insert sent: no preserved fields, and `id: 0` until the API assigns one. */
+  function inserted(): IBuildingSaveRequest {
+    return toBuildingSaveRequest(
+      form({ imageDataUrl: 'data:image/png;base64,dXBsb2FkZWQ=' }),
+      context()
+    );
+  }
+
+  it('binds the id the insert was assigned, which turns the second post into an update', () => {
+    const request: IBuildingSaveRequest = toRebindRequest(inserted(), 18, 'drive-item-id');
+
+    expect(request.id).toBe(18);
+  });
+
+  it('binds the root folder id the project could not be given before it existed', () => {
+    const request: IBuildingSaveRequest = toRebindRequest(inserted(), 18, 'drive-item-id');
+
+    expect(request.sharepointFolderId).toBe('drive-item-id');
+  });
+
+  it('re-sends the whole body, because Update reads an omitted field as null', () => {
+    // The one rule that makes this a copy of the insert rather than a two-field patch:
+    // `ProjectController.Update` assigns the image and the storage type unconditionally,
+    // so a slim body would blank what the insert had just stored.
+    const request: IBuildingSaveRequest = toRebindRequest(inserted(), 18, 'drive-item-id');
+
+    expect(request.imageBytes).toBe('dXBsb2FkZWQ=');
+    expect(request.documentStorageType).toBe(DOCUMENT_STORAGE_TYPE.sharePoint);
+    expect(request.projectName).toBe('Roof replacement');
+    expect(request.clientId).toBe(42);
+  });
+
+  it('leaves the body it was handed untouched, so the printed insert stays what was sent', () => {
+    const first: IBuildingSaveRequest = inserted();
+    toRebindRequest(first, 18, 'drive-item-id');
+
+    expect(first.id).toBe(0);
+    expect(first.sharepointFolderId).toBeUndefined();
   });
 });

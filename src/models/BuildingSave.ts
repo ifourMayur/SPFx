@@ -7,10 +7,11 @@
  *
  * This is step 8 of `D:\Projects\TaskXS\BMDeskV2\docs\BuildingController-AddEdit-POST-Process.md`
  * - the reference application's `DoActionForPost<BuildingModel>(buildingModel, "Building")`.
- * **Only that single call is modelled here**; the steps around it belong to their own
- * modules. What the save does with them is in `BuildingService`, and the folder tree it
- * provisions is planned in `SharePointFolder.ts`. The reference's "rebind" second POST, its
- * document-storage rows and its tender folders have no counterpart yet.
+ * **Only that call and its "rebind" repeat are modelled here** - see {@link
+ * toRebindRequest}; the steps around them belong to their own modules. What the save does
+ * with them is in `BuildingService`, the folder tree it provisions is planned in
+ * `SharePointFolder.ts`, and the rows binding those folders to the project are built in
+ * `DocumentStorage.ts`. The reference's tender folders have no counterpart yet.
  *
  * ## Field naming
  *
@@ -287,6 +288,21 @@ export interface IBuildingSaveResponse {
   message?: string;
 }
 
+/**
+ * What binding the project's root SharePoint folder id onto it did - the reference's
+ * "rebind" second `POST api/Building`.
+ *
+ * Reported rather than thrown, like every other step that runs after the project exists.
+ */
+export interface IProjectRebindResult {
+  /** True when the API accepted the folder id. */
+  isRebound: boolean;
+  /** The Graph `driveItem.id` that was posted, whether or not it was accepted. */
+  sharepointFolderId: string;
+  /** Why it was refused; empty when it was not. */
+  message: string;
+}
+
 /** Outcome of a successful save. */
 export interface IProjectSaveResult {
   /** The id the project now has - newly assigned on an insert. */
@@ -321,6 +337,14 @@ export interface IProjectSaveResult {
    * result may still say the API refused the call; see {@link IDocumentStorageResult}.
    */
   documentStorage?: IDocumentStorageResult;
+  /**
+   * What binding the root folder's id onto the project itself did.
+   *
+   * `undefined` when there was nothing to bind - this was an update, no folders were
+   * provisioned, or the root folder's Graph id could not be read. A present result may
+   * still say the API refused it; see {@link IProjectRebindResult}.
+   */
+  rebind?: IProjectRebindResult;
 }
 
 /** Parses an `<option>` value into a server id; anything unusable becomes `0`. */
@@ -472,4 +496,37 @@ export function toBuildingSaveRequest(
     companyName: context.companyName,
     companyLogo: context.companyLogo
   };
+}
+
+/**
+ * The body of the **second** `POST api/Building` - the reference's "rebind".
+ *
+ * A project cannot be told which SharePoint folder it lives in until both exist, and the
+ * folders can only be created once the insert has assigned a project id. So the insert
+ * posts `id: 0` with no folder, and this posts the same body back with the two values
+ * that were unknowable the first time: the assigned id, which routes the call to
+ * `ProjectController.Update`, and the root folder's Graph `driveItem.id`, which lands in
+ * the project's `SharePointFolderId` column.
+ *
+ * **The whole body is re-sent, not just those two fields.** `Update` assigns from the
+ * request unconditionally, so a two-field patch would blank the image, the storage type
+ * and everything else the insert had just stored - the same trap {@link
+ * IPreservedProjectFields} exists for. Re-sending what was posted a moment ago is what
+ * makes that safe here, and it is why this takes the request rather than the form.
+ *
+ * Returns a copy: the body handed in is what the development console printed as the
+ * insert, and it stays that.
+ *
+ * @param request - the body the insert posted.
+ * @param projectId - the id the API assigned it.
+ * @param sharepointFolderId - `IFolderProvisionResult.rootId`, the Graph id of the
+ *   project's root folder. Not SharePoint's `UniqueId`: the Web API reaches these folders
+ *   through Graph, and the two are different identifiers - see `SharePointFolder.ts`.
+ */
+export function toRebindRequest(
+  request: IBuildingSaveRequest,
+  projectId: number,
+  sharepointFolderId: string
+): IBuildingSaveRequest {
+  return { ...request, id: projectId, sharepointFolderId };
 }

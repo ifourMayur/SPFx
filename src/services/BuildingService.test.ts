@@ -75,15 +75,28 @@ interface IFakeBodies {
   folders?: unknown;
   /** `GET Building/GetProjectsubFolder` - the project-scoped tree read after provisioning. */
   projectFolders?: unknown;
+  /**
+   * The **second** `POST api/Building` - the rebind that binds the root folder id on.
+   *
+   * Absent means it is answered with {@link IFakeBodies.write}, which is what the API
+   * really does: it echoes the model back either way. Set it only to make the rebind fail
+   * while the insert before it succeeds.
+   */
+  rebind?: unknown;
 }
 
 /**
  * Transport that answers each of the save's calls with its own body, recording all of them.
  *
- * One canned body would not do: the save makes two calls to the same route with different
- * verbs, and a third to another controller.
+ * One canned body would not do: the save posts twice to the same route and reads from it
+ * with a different verb, and reads a third time from another controller.
+ *
+ * The two POSTs share a URL and are told apart by their order, which is unambiguous - the
+ * rebind only ever follows an insert that provisioned folders.
  */
 function fakeTransport(bodies: IFakeBodies, requests: IRecordedRequest[]): IFakeHttpClient {
+  let writes: number = 0;
+
   return {
     fetch: async (url: string, options: IHttpClientOptions): Promise<HttpClientResponse> => {
       const method: string = String(options.method);
@@ -103,7 +116,13 @@ function fakeTransport(bodies: IFakeBodies, requests: IRecordedRequest[]): IFake
         return fakeResponse(bodies.folders);
       }
 
-      return fakeResponse(method === 'POST' ? bodies.write : bodies.read);
+      if (method !== 'POST') {
+        return fakeResponse(bodies.read);
+      }
+
+      writes += 1;
+
+      return fakeResponse(writes > 1 && bodies.rebind !== undefined ? bodies.rebind : bodies.write);
     }
   };
 }
@@ -149,6 +168,37 @@ function fakeFolderService(
           name: path.split('/').slice(-1)[0],
           path,
           id: `guid:${path}`,
+          uniqueId: `unique:${path}`,
+          url: `${site.url}/Shared%20Documents/${path}`,
+          wasCreated: true
+        })),
+        created: paths,
+        skipped: [],
+        failed: []
+      };
+    }
+  };
+}
+
+/**
+ * A folder service whose folders exist but carry no Graph id.
+ *
+ * The drive read that names a folder for Graph failed, which `IProvisionedFolder.id`
+ * documents as deliberately not the same as a failed folder: the folder is there, it
+ * simply cannot be reported to the Web API.
+ */
+function fakeFolderServiceWithoutIds(): ISharePointFolderService {
+  return {
+    createProjectFolders: async (site, projectName, folders): Promise<IFolderProvisionResult> => {
+      const paths: string[] = planFolderTree(projectName, folders);
+
+      return {
+        rootUrl: `${site.url}/Shared%20Documents/${projectName}`,
+        rootId: '',
+        folders: paths.map((path: string): IProvisionedFolder => ({
+          name: path.split('/').slice(-1)[0],
+          path,
+          id: '',
           uniqueId: `unique:${path}`,
           url: `${site.url}/Shared%20Documents/${path}`,
           wasCreated: true
@@ -863,5 +913,143 @@ describe('BuildingService - recording the SharePoint folder ids', () => {
     expect(result.projectId).toBe(18);
     expect(recorded).toHaveLength(0);
     expect(result.documentStorage).toBeUndefined();
+  });
+});
+
+describe('BuildingService - binding the root folder id onto the project', () => {
+  /** A rebind the API refused inside an HTTP 200. */
+  const REFUSED = { data: null, success: false, message: 'Project not found.', messageType: 3 };
+
+  /** Only the saves, so a test can reach the second one without counting reads. */
+  function writes(requests: IRecordedRequest[]): IRecordedRequest[] {
+    return requests.filter((request: IRecordedRequest) => request.method === 'POST');
+  }
+
+  it('posts a second time, once the folders exist and before their ids are recorded', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), contextWithSite());
+
+    // Insert, read the template tree, create the folders, rebind, read the project tree.
+    expect(requests.map((request: IRecordedRequest) => request.method)).toEqual([
+      'POST',
+      'GET',
+      'POST',
+      'GET'
+    ]);
+  });
+
+  it('binds the id the insert was assigned, which routes the second post to Update', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), contextWithSite());
+
+    expect(writes(requests)[0].body.id).toBe(0);
+    expect(writes(requests)[1].url).toBe('https://api.example.com/api/Building');
+    expect(writes(requests)[1].body.id).toBe(18);
+  });
+
+  it('binds the root folder Graph id, which is what the insert could not know', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), contextWithSite());
+
+    expect(writes(requests)[0].body.sharepointFolderId).toBeUndefined();
+    expect(writes(requests)[1].body.sharepointFolderId).toBe('guid:Roof replacement');
+  });
+
+  it('re-sends what the insert stored, which Update would otherwise null', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(
+      form({ imageDataUrl: 'data:image/png;base64,dXBsb2FkZWQ=' }),
+      contextWithSite()
+    );
+
+    expect(writes(requests)[1].body.imageBytes).toBe('dXBsb2FkZWQ=');
+    expect(writes(requests)[1].body.documentStorageType).toBe(1);
+    expect(writes(requests)[1].body.projectName).toBe('Roof replacement');
+  });
+
+  it('carries the outcome back on the result', async () => {
+    const result: IProjectSaveResult = await build(allBodies()).saveProject(
+      form(),
+      contextWithSite()
+    );
+
+    expect(result.rebind?.isRebound).toBe(true);
+    expect(result.rebind?.sharepointFolderId).toBe('guid:Roof replacement');
+    expect(result.rebind?.message).toBe('');
+  });
+
+  it('does not post again on an update, which creates no folders to bind', async () => {
+    const requests: IRecordedRequest[] = [];
+    const result: IProjectSaveResult = await build(
+      allBodies(UPDATED, envelope(STORED_PROJECT)),
+      requests
+    ).saveProject(form({ id: 12 }), contextWithSite());
+
+    expect(writes(requests)).toHaveLength(1);
+    expect(result.rebind).toBeUndefined();
+  });
+
+  it('does not post again when no site was chosen, so no folder was created', async () => {
+    const requests: IRecordedRequest[] = [];
+    const result: IProjectSaveResult = await build(allBodies(), requests).saveProject(
+      form(),
+      CONTEXT
+    );
+
+    expect(writes(requests)).toHaveLength(1);
+    expect(result.rebind).toBeUndefined();
+  });
+
+  it('does not post again when the root folder has no Graph id to bind', async () => {
+    // The folder exists; only the drive read that names it for Graph failed. Posting an
+    // empty id would blank the column rather than fill it.
+    const requests: IRecordedRequest[] = [];
+    const result: IProjectSaveResult = await build(
+      allBodies(),
+      requests,
+      fakeFolderServiceWithoutIds()
+    ).saveProject(form(), contextWithSite());
+
+    expect(writes(requests)).toHaveLength(1);
+    expect(result.rebind).toBeUndefined();
+  });
+
+  it('does not fail the save when the rebind is refused', async () => {
+    // The project and its folders both exist by now, so this must not send the user back
+    // to the form to create a duplicate.
+    const result: IProjectSaveResult = await build({
+      ...allBodies(),
+      rebind: REFUSED
+    }).saveProject(form(), contextWithSite());
+
+    expect(result.projectId).toBe(18);
+    expect(result.rebind?.isRebound).toBe(false);
+    expect(result.rebind?.message).toBe('Project not found.');
+  });
+
+  it('treats a message inside an HTTP 200 as a refused rebind, not a failed save', async () => {
+    const result: IProjectSaveResult = await build({
+      ...allBodies(),
+      rebind: envelope({ id: 18, message: 'Account limit reached, please upgrade.' })
+    }).saveProject(form(), contextWithSite());
+
+    expect(result.projectId).toBe(18);
+    expect(result.rebind?.isRebound).toBe(false);
+    expect(result.rebind?.message).toBe('Account limit reached, please upgrade.');
+  });
+
+  it('still records the folder ids after a refused rebind', async () => {
+    // The two steps are independent: losing the project's own root id is no reason to
+    // leave every sub-folder unreported as well.
+    const recorded: IDocumentStorageRequest[] = [];
+    await build(
+      { ...allBodies(), rebind: REFUSED },
+      [],
+      fakeFolderService([]),
+      fakeDocumentStorageService(recorded)
+    ).saveProject(form(), contextWithSite());
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].projectId).toBe(18);
   });
 });

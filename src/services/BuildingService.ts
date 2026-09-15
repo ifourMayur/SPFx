@@ -9,10 +9,12 @@ import {
   IBuildingSaveRequest,
   IBuildingSaveResponse,
   IPreservedProjectFields,
+  IProjectRebindResult,
   IProjectSaveContext,
   IProjectSaveResult,
   toBuildingSaveRequest,
-  toPreservedFields
+  toPreservedFields,
+  toRebindRequest
 } from '../models/BuildingSave';
 import {
   IDocumentStorageRequest,
@@ -33,8 +35,8 @@ import { ISharePointFolderService } from './SharePointFolderService';
  * Two endpoints on the `ProjectController` that is aliased as `api/Building` - distinct
  * from `IProjectService`, which serves the REST-style `api/projects` the dashboard reads:
  *
- * Saving fans out to three calls whose order is a business rule, which is why it lives here
- * rather than in a component:
+ * Saving fans out to several calls whose order is a business rule, which is why it lives
+ * here rather than in a component:
  *
  * | # | Call | Reference | When |
  * | --- | --- | --- | --- |
@@ -42,29 +44,36 @@ import { ISharePointFolderService } from './SharePointFolderService';
  * | 2 | `POST api/Building` | step 8, `DoActionForPost<BuildingModel>(buildingModel, "Building")` | always |
  * | 3 | `GET ProjectTemplate/GetSubFolder` | step 5's template-only sibling | after a successful save |
  * | 4 | Create those folders in SharePoint | step 6, `SharePointHelper.CreateProjectFolders` | insert only, and only with a chosen site |
- * | 5 | `GET Building/GetProjectsubFolder` | step 9d.1 | insert only, once folders exist |
- * | 6 | `POST Document/AddDocumentStorageDetails` | step 9d.4 | insert only, once folders exist |
+ * | 5 | `POST api/Building` again | step 9c, the "rebind" | insert only, once the root folder has an id |
+ * | 6 | `GET Building/GetProjectsubFolder` | step 9d.1 | insert only, once folders exist |
+ * | 7 | `POST Document/AddDocumentStorageDetails` | step 9d.4 | insert only, once folders exist |
  *
  * The POST routes on `model.Id`, so the one call inserts (`id: 0`) and updates (`id > 0`).
  * The read-back before it exists because `ProjectController.Update` assigns the project's
  * image, its SharePoint folder id and the third-party integration fields from the request
  * **unconditionally** - see `IPreservedProjectFields`.
  *
+ * ## Why the project is posted twice
+ *
+ * Steps 2 and 5 are the same call, and the second is not a retry. A project cannot be told
+ * which SharePoint folder it lives in until both exist, and the folders cannot be created
+ * until the insert has assigned a project id to name them under - so the id and the folder
+ * id are each unknowable at the moment the other is needed. The insert posts neither; the
+ * rebind posts both, routed to `Update` by the id it now has. `toRebindRequest` re-sends
+ * the whole body rather than the two fields, for the same reason the read-back exists.
+ *
  * ## Why the folder tree is read twice
  *
- * Steps 3 and 5 fetch the same shape from two different endpoints, and the difference is
+ * Steps 3 and 6 fetch the same shape from two different endpoints, and the difference is
  * not redundancy. Step 3 decides **what to create**: `ProjectTemplate/GetSubFolder` reports
- * the template as authored, and handles the `BIM` folder the API synthesizes. Step 5
+ * the template as authored, and handles the `BIM` folder the API synthesizes. Step 6
  * decides **what to report**: `AddList` stamps the SharePoint ids onto `ProjectSubFolder`
  * rows matched by id, and only `Building/GetProjectsubFolder` knows those - the template
  * read answers with `SubFolder.ID` instead. Driving creation from the project-scoped read
  * as the reference does would create every active folder in the system rather than the
  * template's, so the two reads stay separate here. See `models/DocumentStorage.ts`.
  *
- * One step of the reference is still not implemented: the "rebind" second `POST
- * api/Building` that stores the tree's root id on the project itself, and the tender
- * folders. So a created project's own `sharepointFolderId` column stays empty even though
- * its folders and their ids are now recorded.
+ * One step of the reference is still not implemented: its tender folders.
  */
 export interface IBuildingService {
   /**
@@ -101,12 +110,13 @@ export interface IBuildingService {
    *
    * Once the save succeeds, the template's folder tree is read through
    * `IProjectTemplateService` and, for a newly inserted project, created in the chosen
-   * SharePoint site - and the ids SharePoint gave those folders are then reported back to
-   * the Web API. None of that is allowed to fail the save: the project genuinely exists by
-   * then, so reporting a failure would invite the user to save again and create a
-   * duplicate. What could not be done comes back in the result instead - an absent
-   * `templateFolders`, a `folderProvision` carrying failures, or a `documentStorage` saying
-   * the ids were not recorded.
+   * SharePoint site. The root folder's id is then bound onto the project by a second POST,
+   * and the ids SharePoint gave every folder are reported back to the Web API. None of
+   * that is allowed to fail the save: the project genuinely exists by then, so reporting a
+   * failure would invite the user to save again and create a duplicate. What could not be
+   * done comes back in the result instead - an absent `templateFolders`, a
+   * `folderProvision` carrying failures, a `rebind` saying the project was not given its
+   * folder id, or a `documentStorage` saying the ids were not recorded.
    *
    * @param form - the validated form; `form.id === 0` inserts.
    * @param context - session-derived values the form does not hold.
@@ -212,7 +222,7 @@ export class BuildingService implements IBuildingService {
     // `success: false` - which is how the API reports a `ModelState` rejection, since it
     // answers HTTP 200 either way - so a dump placed after it would never run for the
     // responses most worth seeing.
-    this._logResponse(url, isCreated, payload);
+    this._logResponse(url, isCreated ? 'insert' : 'update', payload);
 
     const response: IBuildingSaveResponse | undefined = unwrapResponseDetail<IBuildingSaveResponse>(
       payload,
@@ -273,6 +283,9 @@ export class BuildingService implements IBuildingService {
       projectTemplateId: projectTemplateId || undefined,
       templateFolders,
       folderProvision,
+      // Before the ids are recorded, so the project carries its own root folder as soon as
+      // that folder exists. The two are independent - a refused rebind still records.
+      rebind: await this._rebindFolderId(request, projectId, folderProvision),
       documentStorage: await this._recordFolderIds(
         projectId,
         projectTemplateId,
@@ -280,6 +293,78 @@ export class BuildingService implements IBuildingService {
         folderProvision
       )
     };
+  }
+
+  /**
+   * Binds the root folder's id onto the project itself - the reference's "rebind", step 5
+   * of the table above.
+   *
+   * The project was inserted before its folders existed, so its `SharePointFolderId`
+   * column is still empty; this is the call that fills it, and it is why the Web API can
+   * later reach the project's documents through Graph at all.
+   *
+   * Reports rather than throws, like every step after the insert. The project and its
+   * folders both exist by now, so failing here would show a failed save for work that
+   * succeeded and invite the user to create a duplicate. The refusal comes back on the
+   * result instead - including the subscription cap, which `ProjectController.Post`
+   * reports inside an HTTP 200 rather than through the envelope.
+   *
+   * @param request - the body the insert posted, re-sent with the two new values bound on.
+   * @param projectId - the id the insert was assigned.
+   * @param provision - what creating the folders did.
+   * @returns the outcome, or `undefined` when there is nothing to bind: no folders were
+   *   provisioned (an update, or no chosen site), or the root folder exists but its Graph
+   *   id could not be read - posting an empty id would blank the column, not fill it.
+   */
+  private async _rebindFolderId(
+    request: IBuildingSaveRequest,
+    projectId: number,
+    provision: IFolderProvisionResult | undefined
+  ): Promise<IProjectRebindResult | undefined> {
+    if (!provision || !provision.rootId) {
+      return undefined;
+    }
+
+    const sharepointFolderId: string = provision.rootId;
+    const url: string = this._apiService.resolveUrl(this._endpoint);
+
+    try {
+      const payload: unknown = await this._apiService.post<unknown, IBuildingSaveRequest>(
+        this._endpoint,
+        toRebindRequest(request, projectId, sharepointFolderId)
+      );
+
+      // Printed before the unwrap that may throw, for the reason the insert's dump is.
+      this._logResponse(url, 'rebind', payload);
+
+      const response: IBuildingSaveResponse | undefined =
+        unwrapResponseDetail<IBuildingSaveResponse>(payload, 'the project the folder id was bound onto');
+      const message: string = (response?.message || '').trim();
+
+      if (message) {
+        throw new ApiError(message, { status: 200, statusText: 'OK', url });
+      }
+
+      Log.info(LOG_SOURCE, `Project ${projectId} now carries folder ${sharepointFolderId}.`);
+
+      return { isRebound: true, sharepointFolderId, message: '' };
+    } catch (error) {
+      Log.error(
+        LOG_SOURCE,
+        error instanceof Error
+          ? error
+          : new Error(`Folder ${sharepointFolderId} could not be bound onto project ${projectId}.`)
+      );
+
+      return {
+        isRebound: false,
+        sharepointFolderId,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'The project could not be given its SharePoint folder id.'
+      };
+    }
   }
 
   /**
@@ -394,8 +479,8 @@ export class BuildingService implements IBuildingService {
    * **Inserts only**, which is what the reference does too: an update would create a second
    * root folder whenever the project had been renamed, leaving the original tree orphaned
    * and its documents where nobody would look for them. Repairing an existing project's
-   * folders needs the stored `sharepointFolderId` to know which root it already has, and
-   * that is not read back yet.
+   * folders would mean resolving the root it already has from the `sharepointFolderId` an
+   * update reads back - a Graph id, which SharePoint's own APIs cannot be addressed by.
    *
    * Like the folder read before it, a failure here does not fail the save - the project
    * exists by now.
@@ -493,10 +578,11 @@ export class BuildingService implements IBuildingService {
    * This is how the save is verified during development: the same dev-only dump
    * `LoginService` makes for the sign-in handshake, and it should be removed alongside it
    * before shipping to production.
+   *
+   * @param operation - which POST this was. The two share a URL, so the label is the only
+   *   thing telling an insert's dump from the rebind's that follows it.
    */
-  private _logResponse(url: string, isCreated: boolean, payload: unknown): void {
-    const operation: string = isCreated ? 'insert' : 'update';
-
+  private _logResponse(url: string, operation: string, payload: unknown): void {
     Log.info(LOG_SOURCE, `POST ${url} (${operation}) answered.`);
     console.log(`[${LOG_SOURCE}] POST ${url} (${operation}) response:`, payload);
   }

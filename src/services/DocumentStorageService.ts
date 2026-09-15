@@ -20,8 +20,9 @@ import { IApiService } from './ApiService';
  * folders exist in the site but the Web API does not know they do.
  *
  * The reference's sibling call in the same branch - the second `POST api/Building` that
- * stores the tree's root id on the project itself - is deliberately not ported, so a
- * created project's `sharepointFolderId` still stays empty.
+ * stores the tree's root id on the project itself - runs just before this one, so the two
+ * together leave the project and every one of its folders addressable. See
+ * `BuildingService._rebindFolderId`.
  */
 export interface IDocumentStorageService {
   /**

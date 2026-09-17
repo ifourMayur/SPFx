@@ -5,6 +5,8 @@
  * here rather than borrowing the framework's.
  */
 .projectAddEdit {
+  box-sizing: border-box;
+  width: 100%;
   padding: 1em;
   color: "[theme:bodyText, default: #323130]";
   color: var(--bodyText);
@@ -257,6 +259,7 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75em;
   margin-top: 1em;
 }

@@ -1,20 +1,57 @@
+/*
+ * XSProject is a full-page application, not a card on a page, so nothing here gives the
+ * app a width, a maximum width or an auto margin: it fills whatever SharePoint hands the
+ * web part. That used to be a fixed, centred column no matter what this file said -
+ * the cap lives on the canvas *around* the web part, and is lifted by
+ * `_releaseWidthCaps` in XsProjectWebPart.ts.
+ *
+ * `overflow: hidden` used to sit on the root and is gone on purpose: every child now
+ * constrains itself (`box-sizing: border-box` throughout, the listing table inside its
+ * own horizontally scrolling wrapper), so there is nothing left to clip - and clipping
+ * the root also clipped the MultiSelect panel and the row menus that open over it.
+ */
 .xsProject {
-  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
   padding: 1em;
   color: "[theme:bodyText, default: #323130]";
   color: var(--bodyText);
 }
 
+/*
+ * Menu beside content, filling the width it is given and the height left below the web
+ * part. `--xsProjectAvailableHeight` is measured by `XsProjectWebPart` because the page
+ * chrome above the web part is a different height on a team site, a communication site,
+ * a Teams tab and the workbench; the viewport fraction is the fallback for any host that
+ * never sets it, the unit tests included.
+ *
+ * `align-items: stretch` (rather than the `flex-start` this had) is what makes the menu
+ * and the page share the full height instead of both shrinking to the shorter one.
+ */
 .appLayout {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--xsProjectAvailableHeight, 70vh);
   margin-bottom: 1em;
   border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
 }
 
 .content {
-  flex: 1;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+}
+
+/* On a phone the two columns become two bands: a 220px menu beside the page leaves the
+   page itself unusable, and a fixed minimum height only adds empty space. */
+@media (max-width: 767px) {
+  .appLayout {
+    flex-direction: column;
+    min-height: 0;
+  }
 }
 
 .siteBar {

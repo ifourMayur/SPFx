@@ -13,6 +13,18 @@
   width: 48px;
 }
 
+/* `.appLayout` stacks at this width, so the sidebar stops being a column and becomes a
+   full width band above the page - collapsed or not, since a 48px rail with nothing
+   beside it is just a wasted row. */
+@media (max-width: 767px) {
+  .sidebar,
+  .sidebar.collapsed {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  }
+}
+
 .header {
   display: flex;
   align-items: center;

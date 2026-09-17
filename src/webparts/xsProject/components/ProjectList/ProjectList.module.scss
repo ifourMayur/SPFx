@@ -1,4 +1,6 @@
 .projectList {
+  box-sizing: border-box;
+  width: 100%;
   padding: 1em;
   color: "[theme:bodyText, default: #323130]";
   color: var(--bodyText);
@@ -77,6 +79,17 @@
 
 .pageSizeField select {
   margin: 0 0.35em;
+}
+
+/* The three `space-between` rows above and below the table hold several controls each,
+   which on a phone have to fall onto a second line instead of being squeezed. */
+@media (max-width: 767px) {
+  .toolbar,
+  .controls,
+  .footer {
+    flex-wrap: wrap;
+    gap: 0.5em;
+  }
 }
 
 .searchField input {

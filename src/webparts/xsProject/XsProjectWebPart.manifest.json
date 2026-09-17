@@ -15,6 +15,12 @@
   "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
   "supportsThemeVariants": true,
 
+  // XSProject is a full-page application, not a card on a page. This lets an author place
+  // it in a full-width section, where SharePoint puts no width cap on the canvas at all.
+  // A normal content section is still supported: `_releaseWidthCaps` in
+  // XsProjectWebPart.ts lifts that section's own cap.
+  "supportsFullBleed": true,
+
   "preconfiguredEntries": [{
     "groupId": "5c03119e-3074-46fd-976b-c60198311f70", // Advanced
     "group": { "default": "Advanced" },

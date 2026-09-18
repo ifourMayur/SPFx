@@ -31,6 +31,8 @@ export interface IAppShellProps {
   notification?: string;
   /** Title of the SharePoint site chosen in `SharePointSites`, named in the site bar. */
   siteTitle: string;
+  /** Absolute URL of that same site, named at the top of the listing. */
+  siteUrl: string;
   /** Returns the user to the site picker. */
   onChangeSite: () => void;
   onSaveProject: (form: IBuildingForm) => Promise<void>;
@@ -78,6 +80,7 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
       rows={props.rows}
       canAddEdit={props.canAddEdit}
       notification={props.notification}
+      siteUrl={props.siteUrl}
       onAddProject={goToAdd}
       onEditProject={goToEdit}
       onToggleFavorite={props.onToggleFavorite}

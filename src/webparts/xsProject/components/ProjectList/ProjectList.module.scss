@@ -6,6 +6,22 @@
   color: var(--bodyText);
 }
 
+/* A long URL is allowed to wrap rather than widen the page: nothing at the root clips. */
+.siteUrlBar {
+  margin-bottom: 1em;
+  font-size: 0.9em;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+
+.siteUrlLabel {
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.siteUrlValue {
+  color: "[theme:themePrimary, default: #0078d4]";
+}
+
 .toolbar {
   display: flex;
   align-items: center;

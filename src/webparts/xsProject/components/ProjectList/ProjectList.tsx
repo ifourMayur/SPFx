@@ -85,7 +85,7 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
   }
 
   public render(): React.ReactElement<IProjectListProps> {
-    const { canAddEdit, notification } = this.props;
+    const { canAddEdit, notification, siteUrl } = this.props;
     const { search, pageSize, showFavoritesOnly, isListView } = this.state;
     const filteredRows: IProjectListRow[] = this._getFilteredRows();
     const sortedRows: IProjectListRow[] = this._getSortedRows(filteredRows);
@@ -113,6 +113,23 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
                 &times;
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Which site collection this session is working in. The shell's site bar names it
+            by title; the URL is what identifies it, and this is the screen a project - and
+            therefore its SharePoint folder tree - is created from. */}
+        {siteUrl && (
+          <div className={styles.siteUrlBar}>
+            <span className={styles.siteUrlLabel}>Site URL:</span>{' '}
+            <a
+              className={styles.siteUrlValue}
+              href={siteUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {siteUrl}
+            </a>
           </div>
         )}
 

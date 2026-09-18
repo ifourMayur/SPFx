@@ -104,6 +104,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               canOpenForm={canOpenProjectForm(userRoleId)}
               notification={notification}
               siteTitle={selectedSite.title}
+              siteUrl={selectedSite.url}
               onChangeSite={this._onChangeSite}
               onSaveProject={this._onSaveProject}
               onToggleFavorite={this._onToggleFavorite}

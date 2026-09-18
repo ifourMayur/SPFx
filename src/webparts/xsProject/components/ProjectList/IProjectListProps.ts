@@ -17,6 +17,16 @@ export interface IProjectListProps {
   canAddEdit: boolean;
   /** Success message to show as a self-dismissing toast, e.g. after a save. */
   notification?: string;
+  /**
+   * Absolute URL of the SharePoint site chosen in `SharePointSites`, named at the top of
+   * the listing.
+   *
+   * The shell's site bar names the site by its title, which does not say which tenant or
+   * site collection it is - and this listing is where a project is created from, so it is
+   * where knowing the site a project's folders will be created in matters. `''` when no
+   * site URL is known, which hides the line rather than labelling nothing.
+   */
+  siteUrl: string;
   /** Called when the user asks to create a project. */
   onAddProject: () => void;
   /** Called with the project to edit. */

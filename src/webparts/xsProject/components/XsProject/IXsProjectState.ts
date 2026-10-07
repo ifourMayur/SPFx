@@ -1,6 +1,5 @@
 import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm } from '../../../../models/Building';
-import { IProjectListRow } from '../../../../models/ProjectListRow';
 import { ISharePointSite } from '../../../../models/SharePointSite';
 
 export interface IXsProjectState {
@@ -29,18 +28,19 @@ export interface IXsProjectState {
    */
   isChangingSite?: boolean;
   /**
-   * Project rows shown by `ProjectList`.
+   * Names of the projects seen on the listing this session, keyed by project id.
    *
-   * Owned here rather than by `ProjectList` because routing to the add/edit form unmounts
-   * that component - a project saved on the form has to survive the round trip.
+   * `ProjectList` is server-paged and refetches on mount, so it needs nothing kept for it
+   * here - but routing to the add/edit form unmounts it, and the form wants the name of
+   * the project being edited. That name is all that has to survive the round trip.
    */
-  rows: IProjectListRow[];
+  projectNames: { [projectId: number]: string };
   /**
    * Forms saved during this session, keyed by project id, so a project can be reopened
    * and edited with its values intact.
    *
-   * Only covers projects saved here: the sample rows have no stored form, which is why
-   * `ProjectAddEdit` falls back to just the name. A `GET api/Building?id=` call would
+   * Only covers projects saved here: a project merely listed has no stored form, which is
+   * why `ProjectAddEdit` falls back to just the name. A `GET api/Building?id=` call would
    * replace this store.
    */
   savedForms: { [projectId: number]: IBuildingForm };

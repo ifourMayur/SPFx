@@ -196,29 +196,16 @@
   text-align: center;
 }
 
+// Size and shape only. The fill and the border are set inline per cell, from the
+// `colorCode` / `borderColorCode` the API computes from the folder's document-completion
+// percentage - so these are deliberately not theme tokens, and there is no local
+// traffic-light palette to keep in step with the server's.
 .circle {
   display: inline-block;
   width: 14px;
   height: 14px;
   border: 2px solid "[theme:neutralTertiary, default: #a19f9d]";
   border-radius: 50%;
-}
-
-// Success/danger are fixed status colors (traffic-light semantics), not part of the
-// SharePoint theme palette, so they are not driven by "[theme:...]" tokens like the rest of
-// this file.
-.circleNone {
-  background-color: "[theme:white, default: #ffffff]";
-}
-
-.circleSuccess {
-  border-color: #107c10;
-  background-color: #107c10;
-}
-
-.circleDanger {
-  border-color: #d13438;
-  background-color: #d13438;
 }
 
 .dash {

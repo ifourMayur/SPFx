@@ -1,51 +1,77 @@
 import * as React from 'react';
 import styles from './ProjectList.module.scss';
 import type { IProjectListProps } from './IProjectListProps';
-import { IProjectListRow, PhaseKey, PhaseStatus } from '../../../../models/ProjectListRow';
-
-/** Columns the table can be sorted by. */
-type SortKey = 'name' | PhaseKey | 'maintenance';
-
-const PHASE_COLUMNS: Array<{ key: PhaseKey; label: string }> = [
-  { key: 'administratie', label: 'Administratie' },
-  { key: 'voorbereiding', label: 'Voorbereiding' },
-  { key: 'ontwerp', label: 'Ontwerp' },
-  { key: 'uitvoering', label: 'Uitvoering' },
-  { key: 'revisie', label: 'Revisie' }
-];
+import { ILookupOption } from '../../../../models/Building';
+import {
+  ICellRender,
+  IListingColumn,
+  IProjectListPage,
+  IProjectListQuery,
+  IProjectListingRow,
+  resolveCell,
+  toListingColumns
+} from '../../../../models/ProjectListing';
 
 const PAGE_SIZE_OPTIONS: number[] = [10, 25, 50, 100];
-
-const SORT_RANK: Record<PhaseStatus, number> = { none: 0, success: 1, danger: 2 };
-
-const CIRCLE_CLASS_NAME: Record<PhaseStatus, string> = {
-  none: styles.circleNone,
-  success: styles.circleSuccess,
-  danger: styles.circleDanger
-};
 
 /** How long the toast stays on screen, matching the reference's `autoHideDelay`. */
 const NOTIFICATION_TIMEOUT_MS: number = 3000;
 
+/**
+ * How long the search box waits for the typing to stop.
+ *
+ * The reference's DataTable debounces its own search for the same reason: every keystroke
+ * would otherwise be a round trip through a query that reads the whole Buildings table.
+ */
+const SEARCH_DEBOUNCE_MS: number = 400;
+
 interface IProjectListState {
+  /** Phase columns, from `Folder/GetFolderWithoutBIM`. */
+  columns: IListingColumn[];
+  /** The page currently on screen. */
+  rows: IProjectListingRow[];
+  /** How many projects there are in total - not how many are on screen. */
+  recordsTotal: number;
+  isLoading: boolean;
+  error?: string;
+  /** What is in the search box right now. */
+  searchInput: string;
+  /** What was last actually searched for, i.e. `searchInput` after the debounce. */
   search: string;
   pageSize: number;
-  currentPage: number;
-  sortKey?: SortKey;
-  sortDirection: 'asc' | 'desc';
+  /** 1-based. */
+  page: number;
+  /** `''` is the server's favourites-first default, not "unsorted". */
+  sortDirection: 'asc' | 'desc' | '';
   showFavoritesOnly: boolean;
   isListView: boolean;
   openMenuRowId?: number;
+  /** Stars the user has clicked this session. See `_onToggleFavorite`. */
+  favorites: { [buildingId: number]: boolean };
 }
 
 /**
- * Project overview table opened from the top-level "Project" item in the shared `Menu`,
- * matching the reference DataTables-style design: favorites/list-view toggles, a
- * show-N-entries and search control, a sortable phase-status table, and pagination.
+ * Project overview table opened from the top-level "Project" item in the shared `Menu`:
+ * the port of `Views/Building/_ProjectListingScreen.cshtml`.
  *
- * The rows themselves come in as a prop - `XsProject` owns them so they survive
- * navigating to the add/edit form and back. Everything this component keeps in state is
- * presentation only: the search term, sort, page and which row menu is open.
+ * **The table is server-paged, as the reference's DataTable is** (`serverSide: true`).
+ * Search, sort, page and the favourites filter are all round trips to
+ * `Dashboard/GetListAllWithPagination` - none of them touches the rows already on screen.
+ * That is why this component fetches its own data instead of being handed a `rows` prop:
+ * a page is only meaningful together with the query that asked for it, so whoever owns the
+ * query has to own the fetch.
+ *
+ * Two things follow from that and are easy to get wrong:
+ *
+ * - The pager is driven by `recordsTotal`, which the API stamps onto every row rather than
+ *   sending beside them. `rows.length` is the size of *this page*.
+ * - Only the project name can be sorted. `GetDashboardListWithPagination` branches on
+ *   `SortColumnDirection` and orders by `BuildingName` either way, so the phase columns
+ *   are headings, not sort buttons - offering to sort by them would do nothing.
+ *
+ * The phase columns are dynamic, built from `Folder/GetFolderWithoutBIM` exactly as
+ * `BuildingController.ProjectLoadData` builds the reference's `<thead>`, and each cell is
+ * matched to its column by folder id.
  *
  * A save reports itself as a single self-dismissing toast, nothing more: what the Web API
  * answered - the project payload and the SharePoint ids bound onto its folder tree - is a
@@ -55,47 +81,78 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
   /** Pending auto-dismiss of the toast. */
   private _notificationTimer: number | undefined;
 
+  /** Pending debounce of the search box. */
+  private _searchTimer: number | undefined;
+
+  /**
+   * Sequence number of the most recent page request.
+   *
+   * Typing quickly, or paging twice, leaves more than one request in flight; without this
+   * the slower one can land last and put the wrong page on screen.
+   */
+  private _requestId: number = 0;
+
+  /** Guards `setState` after the router has unmounted this page mid-request. */
+  private _isMounted: boolean = false;
+
   public constructor(props: IProjectListProps) {
     super(props);
 
     this.state = {
+      columns: [],
+      rows: [],
+      recordsTotal: 0,
+      isLoading: true,
+      searchInput: '',
       search: '',
       pageSize: PAGE_SIZE_OPTIONS[0],
-      currentPage: 1,
-      sortDirection: 'asc',
+      page: 1,
+      sortDirection: '',
       showFavoritesOnly: false,
-      isListView: true
+      isListView: true,
+      favorites: {}
     };
   }
 
   public componentDidMount(): void {
+    this._isMounted = true;
     document.addEventListener('mousedown', this._onDocumentMouseDown);
     this._scheduleNotificationDismiss();
+
+    this._loadColumns();
+    this._loadPage();
   }
 
-  public componentDidUpdate(previousProps: IProjectListProps): void {
+  public componentDidUpdate(previousProps: IProjectListProps, previousState: IProjectListState): void {
     if (previousProps.notification !== this.props.notification) {
       this._scheduleNotificationDismiss();
+    }
+
+    // Every part of the query is the server's business, so any change to one is a refetch.
+    if (
+      previousState.search !== this.state.search ||
+      previousState.page !== this.state.page ||
+      previousState.pageSize !== this.state.pageSize ||
+      previousState.sortDirection !== this.state.sortDirection ||
+      previousState.showFavoritesOnly !== this.state.showFavoritesOnly
+    ) {
+      this._loadPage();
     }
   }
 
   public componentWillUnmount(): void {
+    this._isMounted = false;
     document.removeEventListener('mousedown', this._onDocumentMouseDown);
     this._clearNotificationTimer();
+    this._clearSearchTimer();
   }
 
   public render(): React.ReactElement<IProjectListProps> {
     const { canAddEdit, notification, siteUrl } = this.props;
-    const { search, pageSize, showFavoritesOnly, isListView } = this.state;
-    const filteredRows: IProjectListRow[] = this._getFilteredRows();
-    const sortedRows: IProjectListRow[] = this._getSortedRows(filteredRows);
-    const totalEntries: number = sortedRows.length;
-    const totalPages: number = Math.max(1, Math.ceil(totalEntries / pageSize));
-    const currentPage: number = Math.min(this.state.currentPage, totalPages);
-    const startIndex: number = totalEntries === 0 ? 0 : (currentPage - 1) * pageSize;
-    const pagedRows: IProjectListRow[] = sortedRows.slice(startIndex, startIndex + pageSize);
-    const startEntry: number = totalEntries === 0 ? 0 : startIndex + 1;
-    const endEntry: number = Math.min(startIndex + pageSize, totalEntries);
+    const { searchInput, pageSize, showFavoritesOnly, isListView, rows, recordsTotal, page } = this.state;
+    const totalPages: number = Math.max(1, Math.ceil(recordsTotal / pageSize));
+    const startEntry: number = recordsTotal === 0 ? 0 : (page - 1) * pageSize + 1;
+    const endEntry: number = (page - 1) * pageSize + rows.length;
 
     return (
       <section className={styles.projectList}>
@@ -171,44 +228,52 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
 
           <label className={styles.searchField}>
             Search:{' '}
-            <input type="search" value={search} onChange={this._onSearchChange} />
+            <input type="search" value={searchInput} onChange={this._onSearchChange} />
           </label>
         </div>
 
-        {isListView ? this._renderTable(pagedRows) : this._renderCompactList(pagedRows)}
+        {isListView ? this._renderTable() : this._renderCompactList()}
 
         <div className={styles.footer}>
           <span>
-            {totalEntries === 0 ? 'No entries' : `Showing ${startEntry} to ${endEntry} of ${totalEntries} entries`}
+            {recordsTotal === 0
+              ? 'No entries'
+              : `Showing ${startEntry} to ${endEntry} of ${recordsTotal} entries`}
           </span>
           <div className={styles.pagination}>
-            <button type="button" disabled={currentPage <= 1} onClick={this._onPreviousPage}>Previous</button>
-            <span className={styles.pageIndicator}>{currentPage}</span>
-            <button type="button" disabled={currentPage >= totalPages} onClick={this._onNextPage}>Next</button>
+            <button type="button" disabled={page <= 1} onClick={this._onPreviousPage}>Previous</button>
+            <span className={styles.pageIndicator}>{page}</span>
+            <button type="button" disabled={page >= totalPages} onClick={this._onNextPage}>Next</button>
           </div>
         </div>
       </section>
     );
   }
 
-  private _renderTable(pagedRows: IProjectListRow[]): React.ReactElement {
+  private _renderTable(): React.ReactElement {
+    const { columns, rows } = this.state;
+
     return (
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
           <thead>
             <tr>
               <th className={styles.favoriteHeader} aria-hidden="true" />
-              {this._renderSortableHeader('name', 'Naam van het project')}
-              {PHASE_COLUMNS.map((column) => this._renderSortableHeader(column.key, column.label))}
-              {this._renderSortableHeader('maintenance', 'Maintenance')}
+              {this._renderNameHeader()}
+              {/* Headings, not sort buttons: the API can only order by project name. */}
+              {columns.map((column: IListingColumn) => (
+                <th key={column.folderId} className={styles.statusCell}>{column.label}</th>
+              ))}
               <th className={styles.optionHeader}>Optie</th>
             </tr>
           </thead>
           <tbody>
-            {pagedRows.map((row: IProjectListRow) => this._renderRow(row))}
-            {pagedRows.length === 0 && (
+            {rows.map((row: IProjectListingRow) => this._renderRow(row))}
+            {rows.length === 0 && (
               <tr>
-                <td className={styles.empty} colSpan={PHASE_COLUMNS.length + 4}>No projects found.</td>
+                <td className={styles.empty} colSpan={columns.length + 3}>
+                  {this._renderEmptyMessage()}
+                </td>
               </tr>
             )}
           </tbody>
@@ -217,98 +282,83 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
     );
   }
 
-  private _renderCompactList(pagedRows: IProjectListRow[]): React.ReactElement {
+  /** What stands in for the rows: a failure, a load in progress, or genuinely nothing. */
+  private _renderEmptyMessage(): string {
+    const { isLoading, error } = this.state;
+
+    if (error) {
+      return error;
+    }
+
+    return isLoading ? 'Loading projects…' : 'No projects found.';
+  }
+
+  private _renderCompactList(): React.ReactElement {
+    const { rows } = this.state;
+
     return (
       <ul className={styles.compactList}>
-        {pagedRows.map((row: IProjectListRow) => (
-          <li key={row.id} className={styles.compactItem}>
-            <button
-              type="button"
-              className={styles.star}
-              aria-pressed={row.isFavorite}
-              aria-label={row.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-              data-id={row.id}
-              onClick={this._onToggleFavorite}
-            >
-              {row.isFavorite ? '★' : '☆'}
-            </button>
-            <span className={styles.compactName}>{row.name}</span>
+        {rows.map((row: IProjectListingRow) => (
+          <li key={row.buildingId} className={styles.compactItem}>
+            {this._renderStar(row)}
+            <span className={styles.compactName}>{row.buildingName}</span>
           </li>
         ))}
-        {pagedRows.length === 0 && <li className={styles.empty}>No projects found.</li>}
+        {rows.length === 0 && <li className={styles.empty}>{this._renderEmptyMessage()}</li>}
       </ul>
     );
   }
 
-  private _renderSortableHeader(key: SortKey, label: string): React.ReactElement {
-    const { sortKey, sortDirection } = this.state;
-    const isActive: boolean = sortKey === key;
+  /** The only sortable column: `SortColumnDirection` orders by `BuildingName` or nothing. */
+  private _renderNameHeader(): React.ReactElement {
+    const { sortDirection } = this.state;
 
     return (
-      <th key={key}>
-        <button type="button" className={styles.sortButton} data-key={key} onClick={this._onSortClick}>
-          {label}
+      <th>
+        <button type="button" className={styles.sortButton} onClick={this._onSortByName}>
+          Naam van het project
           <span className={styles.sortIcon} aria-hidden="true">
-            {isActive ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
+            {sortDirection === 'asc' ? '▲' : sortDirection === 'desc' ? '▼' : '⇅'}
           </span>
         </button>
       </th>
     );
   }
 
-  private _renderRow(row: IProjectListRow): React.ReactElement {
-    const { openMenuRowId } = this.state;
+  private _renderRow(row: IProjectListingRow): React.ReactElement {
+    const { openMenuRowId, columns } = this.state;
 
     return (
-      <tr key={row.id}>
-        <td>
-          <button
-            type="button"
-            className={styles.star}
-            aria-pressed={row.isFavorite}
-            aria-label={row.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-            data-id={row.id}
-            onClick={this._onToggleFavorite}
-          >
-            {row.isFavorite ? '★' : '☆'}
-          </button>
-        </td>
+      <tr key={row.buildingId}>
+        <td>{this._renderStar(row)}</td>
         <td className={styles.nameCell}>
-          <a href="#" className={styles.nameLink} onClick={this._onNameClick}>{row.name}</a>
+          <a href="#" className={styles.nameLink} onClick={this._onNameClick}>{row.buildingName}</a>
         </td>
-        {PHASE_COLUMNS.map((column) => (
-          <td key={column.key} className={styles.statusCell}>
-            <span
-              className={`${styles.circle} ${CIRCLE_CLASS_NAME[row[column.key]]}`}
-              aria-label={row[column.key]}
-            />
+        {columns.map((column: IListingColumn) => (
+          <td key={column.folderId} className={styles.statusCell}>
+            {ProjectList._renderCell(row, column)}
           </td>
         ))}
-        <td className={styles.statusCell}>
-          {row.maintenance
-            ? <span className={`${styles.circle} ${CIRCLE_CLASS_NAME[row.maintenance]}`} aria-label={row.maintenance} />
-            : <span className={styles.dash}>-</span>}
-        </td>
         <td className={styles.optionCell}>
           <div className={styles.menuWrapper}>
             <button
               type="button"
               className={styles.optionButton}
-              data-id={row.id}
+              data-id={row.buildingId}
               aria-haspopup="menu"
-              aria-expanded={openMenuRowId === row.id}
+              aria-expanded={openMenuRowId === row.buildingId}
               onClick={this._onToggleRowMenu}
             >
               &hellip;
             </button>
-            {openMenuRowId === row.id && (
+            {openMenuRowId === row.buildingId && (
               <ul className={styles.rowMenu} role="menu">
                 <li role="none"><button type="button" role="menuitem" onClick={this._onCloseRowMenu}>Openen</button></li>
                 {/* Same gate as the Add button: the reference wraps its Edit link in
                     `@if (ViewBag.AddEditAccessRights)` too. */}
                 {this.props.canAddEdit && (
                   <li role="none">
-                    <button type="button" role="menuitem" data-id={row.id} onClick={this._onEditRow}>
+                    <button type="button" role="menuitem" data-id={row.buildingId} onClick={this._onEditRow}>
                       Bewerken
                     </button>
                   </li>
@@ -322,53 +372,130 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
     );
   }
 
-  private _getFilteredRows(): IProjectListRow[] {
-    const { search, showFavoritesOnly } = this.state;
-    const term: string = search.trim().toLowerCase();
+  /**
+   * One phase cell, coloured by the server.
+   *
+   * `colorCode` is a document-completion percentage turned into a colour by
+   * `DashboardRepository.GetColorCodes`, and `borderColorCode` is a whole CSS `border`
+   * shorthand rather than a colour - both are applied inline exactly as the reference's
+   * `style='background-color: …;border: …'` does. A local traffic-light enum would have to
+   * throw every intermediate percentage away.
+   *
+   * The dot carries the column's name so it is not colour-only to a screen reader.
+   */
+  private static _renderCell(row: IProjectListingRow, column: IListingColumn): React.ReactElement {
+    const cell: ICellRender = resolveCell(row, column.folderId);
 
-    return this.props.rows.filter((row: IProjectListRow) => {
-      if (showFavoritesOnly && !row.isFavorite) {
-        return false;
-      }
+    if (cell.kind === 'dash') {
+      return <span className={styles.dash}>-</span>;
+    }
 
-      if (term && row.name.toLowerCase().indexOf(term) === -1) {
-        return false;
-      }
-
-      return true;
-    });
+    return (
+      <span
+        className={styles.circle}
+        role="img"
+        aria-label={column.label}
+        style={{ backgroundColor: cell.colorCode, border: cell.borderColorCode }}
+      />
+    );
   }
 
-  private _getSortedRows(rows: IProjectListRow[]): IProjectListRow[] {
-    const { sortKey, sortDirection } = this.state;
-    if (!sortKey) {
-      return rows;
-    }
+  /**
+   * The favourite star.
+   *
+   * Clicking it moves the star and nothing else: persisting a favourite is
+   * `Building/IsFavoriteBuilding`, which this screen does not call yet. The flag therefore
+   * comes back as the server still has it on the next page load, and "Alleen favorieten
+   * weergeven" filters on the server's value rather than on what is on screen.
+   */
+  private _renderStar(row: IProjectListingRow): React.ReactElement {
+    const isFavorite: boolean = this._isFavorite(row);
 
-    const direction: number = sortDirection === 'asc' ? 1 : -1;
-
-    return rows.slice().sort((a: IProjectListRow, b: IProjectListRow) => {
-      const valueA: string | number = ProjectList._getSortValue(a, sortKey);
-      const valueB: string | number = ProjectList._getSortValue(b, sortKey);
-
-      if (valueA < valueB) {
-        return -1 * direction;
-      }
-      if (valueA > valueB) {
-        return 1 * direction;
-      }
-      return 0;
-    });
+    return (
+      <button
+        type="button"
+        className={styles.star}
+        aria-pressed={isFavorite}
+        aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        data-id={row.buildingId}
+        onClick={this._onToggleFavorite}
+      >
+        {isFavorite ? '★' : '☆'}
+      </button>
+    );
   }
 
-  private static _getSortValue(row: IProjectListRow, key: SortKey): string | number {
-    if (key === 'name') {
-      return row.name.toLowerCase();
-    }
-    if (key === 'maintenance') {
-      return row.maintenance ? SORT_RANK[row.maintenance] : -1;
-    }
-    return SORT_RANK[row[key]];
+  private _isFavorite(row: IProjectListingRow): boolean {
+    const override: boolean | undefined = this.state.favorites[row.buildingId];
+    return override === undefined ? row.isFavorite : override;
+  }
+
+  /**
+   * Loads the phase columns.
+   *
+   * A failure here is deliberately not surfaced as an error: the projects themselves still
+   * load and are still worth showing, just without their status columns. Turning a missing
+   * `Folder/GetFolderWithoutBIM` into a blank screen would be a worse trade.
+   */
+  private _loadColumns(): void {
+    this.props.lookupService
+      .getFolderColumns()
+      .then((options: ILookupOption[]): void => {
+        if (this._isMounted) {
+          this.setState({ columns: toListingColumns(options) });
+        }
+      })
+      .catch((): void => {
+        if (this._isMounted) {
+          this.setState({ columns: [] });
+        }
+      });
+  }
+
+  /** Loads the page the current state describes, ignoring anything that lands out of order. */
+  private _loadPage(): void {
+    const requestId: number = ++this._requestId;
+
+    this.setState({ isLoading: true, error: undefined });
+
+    this.props.listingService
+      .getProjectPage(this._toQuery())
+      .then((result: IProjectListPage): void => {
+        // A slower earlier request must not overwrite a faster later one.
+        if (!this._isMounted || requestId !== this._requestId) {
+          return;
+        }
+
+        this.setState({ rows: result.rows, recordsTotal: result.recordsTotal, isLoading: false });
+        this.props.onProjectsLoaded(result.rows);
+      })
+      .catch((error: unknown): void => {
+        if (!this._isMounted || requestId !== this._requestId) {
+          return;
+        }
+
+        // Named rather than swallowed: an empty table would be indistinguishable from a
+        // tenant that genuinely has no projects.
+        this.setState({
+          rows: [],
+          recordsTotal: 0,
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'The project list could not be loaded.'
+        });
+      });
+  }
+
+  private _toQuery(): IProjectListQuery {
+    const { page, pageSize, search, sortDirection, showFavoritesOnly } = this.state;
+
+    return {
+      page,
+      pageSize,
+      search,
+      sortDirection,
+      showFavoritesOnly,
+      domainGroup: this.props.domainGroup
+    };
   }
 
   /** Restarts the auto-dismiss countdown for the current toast. */
@@ -392,37 +519,74 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
     }
   }
 
+  private _clearSearchTimer(): void {
+    if (this._searchTimer !== undefined) {
+      clearTimeout(this._searchTimer);
+      this._searchTimer = undefined;
+    }
+  }
+
   // Assigned as properties so the `this` pointer is bound without a per-render closure,
   // matching the pattern `Login`/`Menu` use for their own click handlers.
+
+  /**
+   * Types into the search box without searching yet.
+   *
+   * The box stays responsive because `searchInput` updates immediately; only `search` -
+   * the value the query is built from - waits for the typing to stop.
+   */
   private _onSearchChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    this.setState({ search: event.target.value, currentPage: 1 });
+    const value: string = event.target.value;
+
+    this.setState({ searchInput: value });
+    this._clearSearchTimer();
+
+    this._searchTimer = setTimeout((): void => {
+      this._searchTimer = undefined;
+      // Back to page one: the old page number belongs to the old result set.
+      this.setState({ search: value, page: 1 });
+    }, SEARCH_DEBOUNCE_MS) as unknown as number;
   };
 
   private _onPageSizeChange = (event: React.ChangeEvent<HTMLSelectElement>): void => {
-    this.setState({ pageSize: Number(event.target.value), currentPage: 1 });
+    this.setState({ pageSize: Number(event.target.value), page: 1 });
   };
 
   private _onToggleFavoritesOnly = (): void => {
-    this.setState((state: IProjectListState) => ({ showFavoritesOnly: !state.showFavoritesOnly, currentPage: 1 }));
+    this.setState((state: IProjectListState) => ({
+      showFavoritesOnly: !state.showFavoritesOnly,
+      page: 1
+    }));
   };
 
   private _onToggleListView = (): void => {
-    this.setState((state: IProjectListState) => ({ isListView: !state.isListView, currentPage: 1 }));
+    this.setState((state: IProjectListState) => ({ isListView: !state.isListView }));
   };
 
-  private _onSortClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    const key: SortKey = event.currentTarget.dataset.key as SortKey;
-
-    this.setState((state: IProjectListState) => {
-      if (state.sortKey === key) {
-        return { sortDirection: state.sortDirection === 'asc' ? 'desc' : 'asc' };
-      }
-      return { sortKey: key, sortDirection: 'asc' };
-    });
+  /** Cycles the one sort the API offers: favourites-first, then name ascending, then descending. */
+  private _onSortByName = (): void => {
+    this.setState((state: IProjectListState) => ({
+      sortDirection: state.sortDirection === 'asc' ? 'desc' : 'asc',
+      page: 1
+    }));
   };
 
   private _onToggleFavorite = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    this.props.onToggleFavorite(Number(event.currentTarget.dataset.id));
+    const id: number = Number(event.currentTarget.dataset.id);
+
+    this.setState((state: IProjectListState) => {
+      const current: boolean | undefined = state.favorites[id];
+      const row: IProjectListingRow | undefined = state.rows.filter(
+        (candidate: IProjectListingRow) => candidate.buildingId === id
+      )[0];
+
+      return {
+        favorites: {
+          ...state.favorites,
+          [id]: !(current === undefined ? row?.isFavorite : current)
+        }
+      };
+    });
   };
 
   private _onEditRow = (event: React.MouseEvent<HTMLButtonElement>): void => {
@@ -438,16 +602,18 @@ export default class ProjectList extends React.Component<IProjectListProps, IPro
   };
 
   private _onPreviousPage = (): void => {
-    this.setState((state: IProjectListState) => ({ currentPage: Math.max(1, state.currentPage - 1) }));
+    this.setState((state: IProjectListState) => ({ page: Math.max(1, state.page - 1) }));
   };
 
   private _onNextPage = (): void => {
-    this.setState((state: IProjectListState) => ({ currentPage: state.currentPage + 1 }));
+    this.setState((state: IProjectListState) => ({ page: state.page + 1 }));
   };
 
   private _onToggleRowMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
     const id: number = Number(event.currentTarget.dataset.id);
-    this.setState((state: IProjectListState) => ({ openMenuRowId: state.openMenuRowId === id ? undefined : id }));
+    this.setState((state: IProjectListState) => ({
+      openMenuRowId: state.openMenuRowId === id ? undefined : id
+    }));
   };
 
   private _onCloseRowMenu = (): void => {

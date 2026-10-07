@@ -1,3 +1,4 @@
+import type { ILoginResponse } from './Auth';
 import { IBuildingForm, createEmptyBuildingForm } from './Building';
 import {
   DOCUMENT_STORAGE_TYPE,
@@ -10,6 +11,7 @@ import {
   toImageBytes,
   toMomData,
   toPreservedFields,
+  toProjectSaveContext,
   toRebindRequest
 } from './BuildingSave';
 
@@ -400,5 +402,49 @@ describe('toRebindRequest', () => {
 
     expect(first.id).toBe(0);
     expect(first.sharepointFolderId).toBeUndefined();
+  });
+});
+
+describe('toProjectSaveContext', () => {
+  const PAGE = { userDisplayName: 'Page User', hostName: 'contoso.sharepoint.com' };
+  const SITE = { title: 'Projects', url: 'https://contoso.sharepoint.com/sites/projects', siteId: '' };
+
+  it('reads the session values the reference kept in the MVC session off the sign-in response', () => {
+    const login = {
+      id: 12,
+      accountId: 3,
+      userName: 'Jan Jansen',
+      domainUrl: 'https://app.taskxs.nl/login',
+      companyName: 'Own company',
+      masterCompanyName: 'Master company'
+    } as ILoginResponse;
+
+    expect(toProjectSaveContext(login, SITE, PAGE)).toEqual({
+      clientId: 12,
+      clientName: 'Jan Jansen',
+      accountId: 3,
+      domainName: 'app.taskxs.nl',
+      companyName: 'Master company',
+      companyLogo: '',
+      site: SITE
+    });
+  });
+
+  it('falls back to what the hosting page knows when the sign-in response is missing', () => {
+    expect(toProjectSaveContext(undefined, undefined, PAGE)).toEqual({
+      clientId: 0,
+      clientName: 'Page User',
+      accountId: 0,
+      domainName: 'contoso.sharepoint.com',
+      companyName: '',
+      companyLogo: '',
+      site: undefined
+    });
+  });
+
+  it('uses the company name when there is no master company', () => {
+    const login = { companyName: 'Own company' } as ILoginResponse;
+
+    expect(toProjectSaveContext(login, SITE, PAGE).companyName).toBe('Own company');
   });
 });

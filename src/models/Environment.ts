@@ -29,6 +29,16 @@ export interface IApiEndpoints {
   readonly suppliers: string;
   /** `DocumentController` route; `AddDocumentStorageDetails` hangs off it. */
   readonly document: string;
+  /**
+   * `DashboardController` route; `GetListAllWithPagination` hangs off it - the paged
+   * project overview table.
+   */
+  readonly dashboard: string;
+  /**
+   * `FolderController` route; `GetFolderWithoutBIM` hangs off it - the overview table's
+   * phase columns.
+   */
+  readonly folder: string;
 }
 
 /** Everything the API layer needs to talk to the Web API in a given environment. */

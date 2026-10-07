@@ -22,20 +22,6 @@ export interface IProject {
   budget?: number;
 }
 
-/** Body sent to `POST {baseUrl}/projects`. */
-export interface ICreateProjectRequest {
-  name: string;
-  description?: string;
-  status: ProjectStatus;
-  startDate?: string;
-  endDate?: string;
-  ownerEmail?: string;
-  budget?: number;
-}
-
-/** Body sent to `PUT {baseUrl}/projects/{id}`; every field is optional. */
-export type IUpdateProjectRequest = Partial<ICreateProjectRequest>;
-
 /** Filter applied when listing projects. Serialized into the query string. */
 export interface IProjectQuery {
   search?: string;

@@ -18,7 +18,7 @@ export * from './Lookup';
 export * from './Navigation';
 export * from './Permissions';
 export * from './Project';
-export * from './ProjectListRow';
+export * from './ProjectListing';
 export * from './DocumentStorage';
 export * from './ProjectTemplateFolder';
 export * from './SharePointFolder';

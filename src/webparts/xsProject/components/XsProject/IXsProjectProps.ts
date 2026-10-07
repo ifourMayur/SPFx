@@ -1,6 +1,7 @@
 import { IBuildingService } from '../../../../services/BuildingService';
 import { ILoginService } from '../../../../services/LoginService';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
 import { ISharePointSiteService } from '../../../../services/SharePointSiteService';
 
@@ -14,6 +15,12 @@ export interface IXsProjectProps {
    * call. Keeps API access out of the components themselves.
    */
   projectService: IProjectService;
+  /**
+   * The paged read behind the project overview table:
+   * `Dashboard/GetListAllWithPagination`. Separate from `projectService`, which is the
+   * REST-style `api/projects` the dashboard reads - only this one exposes per-phase status.
+   */
+  projectListingService: IProjectListingService;
   /**
    * Write path of the project form: `POST api/Building`. Called from this component,
    * because it owns the save callback the routed form is handed.

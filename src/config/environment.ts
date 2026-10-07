@@ -46,7 +46,9 @@ const ENDPOINTS: IApiEndpoints = {
   spatialBreakdowns: 'SpatialBreakdown',
   tenderTemplates: 'TenderTemplate',
   suppliers: 'Issuer',
-  document: 'Document'
+  document: 'Document',
+  dashboard: 'Dashboard',
+  folder: 'Folder'
 };
 
 /**

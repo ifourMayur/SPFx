@@ -22,7 +22,8 @@ jest.mock('@microsoft/sp-core-library', () => ({
 
 import type { HttpClientResponse, IHttpClientOptions } from '@microsoft/sp-http';
 
-import { ILookupOption } from '../models/Building';
+import { IFolderSelection, ILookupOption } from '../models/Building';
+import type { FolderLevel } from '../models/FolderTree';
 import type { IApiEndpoints } from '../models/Environment';
 import { ApiService } from './ApiService';
 import { IAccessTokenProvider } from './AccessTokenProvider';
@@ -164,6 +165,18 @@ describe('LookupService - binding a dropdown end to end', () => {
     ]);
   });
 
+  /**
+   * The project overview table's phase columns, which are dynamic rather than a fixed set
+   * of five: `BuildingController.ProjectLoadData` fetches this same list to build the
+   * listing's `<thead>`, and each row's `lstDashboard` carries one cell per entry.
+   */
+  it('reaches the folder route the listing builds its phase columns from', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(API_RESPONSE, requests).getFolderColumns();
+
+    expect(requests[0].url).toBe('https://api.example.com/api/Folder/GetFolderWithoutBIM');
+  });
+
   it('sends the folder cascade parameters the API declares', async () => {
     const requests: IRecordedRequest[] = [];
     const service: ILookupService = build(API_RESPONSE, requests);
@@ -215,7 +228,9 @@ describe('LookupService - endpoint composition', () => {
       spatialBreakdowns: 'SpatialBreakdown',
       document: 'RenamedDocument',
       tenderTemplates: 'TenderTemplate',
-      suppliers: 'Issuer'
+      suppliers: 'Issuer',
+      dashboard: 'Dashboard',
+      folder: 'RenamedFolder'
     };
 
     const service = new LookupService(
@@ -234,6 +249,55 @@ describe('LookupService - endpoint composition', () => {
     expect(requests[1].url).toBe(
       'https://api.example.com/api/RenamedBuilding/GetProjectFolders?projectId=7'
     );
+  });
+});
+
+describe('LookupService - one level of the folder cascade', () => {
+  // The form hands over the level and its whole selection; which endpoint that means and
+  // which ancestor ids it takes - as integers, with the API's own casing - is decided here.
+  const SELECTION: IFolderSelection = {
+    folderId: '10',
+    subFolderId: '20',
+    subSubFolderId: '30',
+    subSubSubFolderId: '40',
+    supplierId: '50'
+  };
+
+  async function urlFor(level: FolderLevel): Promise<string> {
+    const requests: IRecordedRequest[] = [];
+    await build(API_RESPONSE, requests).getFolderLevel(7, level, SELECTION);
+
+    return requests[0].url;
+  }
+
+  it('asks for the top level with nothing but the project', async () => {
+    expect(await urlFor('folderId')).toBe(
+      'https://api.example.com/api/Building/GetProjectFolders?projectId=7'
+    );
+  });
+
+  it('asks for the second level under the chosen folder', async () => {
+    expect(await urlFor('subFolderId')).toBe(
+      'https://api.example.com/api/Building/GetProjectSubFolders?projectId=7&folderId=10'
+    );
+  });
+
+  it('asks for the third level with the lower-cased subfolderId the API expects', async () => {
+    expect(await urlFor('subSubFolderId')).toBe(
+      'https://api.example.com/api/Building/GetProjectSubSubFolders?projectId=7&folderId=10&subfolderId=20'
+    );
+  });
+
+  it('asks for the fourth level with every ancestor, and never sends its own value', async () => {
+    expect(await urlFor('subSubSubFolderId')).toBe(
+      'https://api.example.com/api/Building/GetProjectSubSubSubFolders?projectId=7&folderId=10&subfolderId=20&subsubfolderId=30'
+    );
+  });
+
+  it('returns the level as dropdown options', async () => {
+    const options: ILookupOption[] = await build(API_RESPONSE).getFolderLevel(7, 'folderId', SELECTION);
+
+    expect(options.map((option: ILookupOption) => option.name)).toEqual(['Base template', 'Renovation']);
   });
 });
 

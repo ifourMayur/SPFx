@@ -1,8 +1,6 @@
 import { Log } from '@microsoft/sp-core-library';
 
 import { getEnvironment } from '../config/environment';
-import { unwrapResponseDetail } from '../models/ApiEnvelope';
-import { ApiError } from '../models/ApiError';
 import { IBuildingForm } from '../models/Building';
 import {
   IBuildingDetails,
@@ -25,6 +23,7 @@ import { IProjectTemplateFolders, toTemplateFolders } from '../models/ProjectTem
 import { IFolderProvisionResult } from '../models/SharePointFolder';
 import { ISharePointSite } from '../models/SharePointSite';
 import { IApiService } from './ApiService';
+import { BaseApiService } from './BaseApiService';
 import { IDocumentStorageService } from './DocumentStorageService';
 import { IProjectTemplateService } from './ProjectTemplateService';
 import { ISharePointFolderService } from './SharePointFolderService';
@@ -139,9 +138,8 @@ const LOG_SOURCE: string = 'BuildingService';
  */
 const PROJECT_SUB_FOLDER_ACTION: string = 'GetProjectsubFolder';
 
-/** Default {@link IBuildingService}, built on `IApiService`. */
-export class BuildingService implements IBuildingService {
-  private readonly _apiService: IApiService;
+/** Default {@link IBuildingService}, built on `BaseApiService`. */
+export class BuildingService extends BaseApiService implements IBuildingService {
   private readonly _projectTemplateService: IProjectTemplateService;
   private readonly _folderService: ISharePointFolderService;
   private readonly _documentStorageService: IDocumentStorageService;
@@ -168,7 +166,7 @@ export class BuildingService implements IBuildingService {
     documentStorageService: IDocumentStorageService,
     endpoint: string = getEnvironment().api.endpoints.building
   ) {
-    this._apiService = apiService;
+    super(apiService, LOG_SOURCE);
     this._projectTemplateService = projectTemplateService;
     this._folderService = folderService;
     this._documentStorageService = documentStorageService;
@@ -176,27 +174,19 @@ export class BuildingService implements IBuildingService {
   }
 
   public async getProject(id: number): Promise<IBuildingDetails | undefined> {
-    const payload: unknown = await this._apiService.get<unknown>(this._endpoint, { id });
-
-    return unwrapResponseDetail<IBuildingDetails>(payload, `project ${id}`);
+    return this.getData<IBuildingDetails>(this._endpoint, { id }, { operation: `project ${id}` });
   }
 
   public async getProjectSubFolders(
     templateId: number,
     projectId: number
   ): Promise<IProjectTemplateFolders | undefined> {
-    const relativeUrl: string = `${this._endpoint}/${PROJECT_SUB_FOLDER_ACTION}`;
     // `isCreateProject` makes the API report the folders of a project that has just been
     // created, which is exactly the moment this is called from.
-    const payload: unknown = await this._apiService.get<unknown>(relativeUrl, {
-      id: templateId,
-      ProjectId: projectId,
-      isCreateProject: true
-    });
-
-    return unwrapResponseDetail<IProjectTemplateFolders>(
-      payload,
-      `the folders of project ${projectId}`
+    return this.getData<IProjectTemplateFolders>(
+      this.route(this._endpoint, PROJECT_SUB_FOLDER_ACTION),
+      { id: templateId, ProjectId: projectId, isCreateProject: true },
+      { operation: `the folders of project ${projectId}` }
     );
   }
 
@@ -210,47 +200,35 @@ export class BuildingService implements IBuildingService {
       ? toPreservedFields(details)
       : undefined;
     const request: IBuildingSaveRequest = toBuildingSaveRequest(form, context, preserved);
-    const url: string = this._apiService.resolveUrl(this._endpoint);
 
-    const payload: unknown = await this._apiService.post<unknown, IBuildingSaveRequest>(
-      this._endpoint,
-      request
-    );
-
-    // Printed before anything is read out of it, so a refused save is exactly as visible as
-    // an accepted one. That ordering is the whole point: `unwrapResponseDetail` throws on
+    // Printed (`print`) before anything is read out of it, so a refused save is exactly as
+    // visible as an accepted one. That ordering is the whole point: the unwrap throws on
     // `success: false` - which is how the API reports a `ModelState` rejection, since it
     // answers HTTP 200 either way - so a dump placed after it would never run for the
-    // responses most worth seeing.
-    this._logResponse(url, isCreated ? 'insert' : 'update', payload);
-
-    const response: IBuildingSaveResponse | undefined = unwrapResponseDetail<IBuildingSaveResponse>(
-      payload,
-      'the saved project'
-    );
+    // responses most worth seeing. The label tells an insert's dump from the rebind's that
+    // follows it, since the two share a URL. Dev-only; remove before shipping to production.
+    const response: IBuildingSaveResponse | undefined = await this.postData<
+      IBuildingSaveResponse,
+      IBuildingSaveRequest
+    >(this._endpoint, request, {
+      operation: 'the saved project',
+      print: { label: isCreated ? 'insert' : 'update' }
+    });
 
     if (!response) {
-      throw new ApiError('The Web API returned an empty response to the project save.', {
-        status: 200,
-        statusText: 'OK',
-        url
-      });
+      throw this.refusal('The Web API returned an empty response to the project save.', this._endpoint);
     }
 
     // The subscription cap arrives here rather than in the envelope, and stops the save:
     // the reference carries on and inserts orphan rows against project `0` instead.
     const message: string = (response.message || '').trim();
     if (message) {
-      throw new ApiError(message, { status: 200, statusText: 'OK', url });
+      throw this.refusal(message, this._endpoint);
     }
 
     const projectId: number = Number(response.id);
     if (!isFinite(projectId) || projectId <= 0) {
-      throw new ApiError('The Web API saved the project without returning its id.', {
-        status: 200,
-        statusText: 'OK',
-        url
-      });
+      throw this.refusal('The Web API saved the project without returning its id.', this._endpoint);
     }
 
     // The template the project ended up on. The response is the first source of truth: an
@@ -326,35 +304,27 @@ export class BuildingService implements IBuildingService {
     }
 
     const sharepointFolderId: string = provision.rootId;
-    const url: string = this._apiService.resolveUrl(this._endpoint);
 
     try {
-      const payload: unknown = await this._apiService.post<unknown, IBuildingSaveRequest>(
-        this._endpoint,
-        toRebindRequest(request, projectId, sharepointFolderId)
-      );
-
       // Printed before the unwrap that may throw, for the reason the insert's dump is.
-      this._logResponse(url, 'rebind', payload);
-
-      const response: IBuildingSaveResponse | undefined =
-        unwrapResponseDetail<IBuildingSaveResponse>(payload, 'the project the folder id was bound onto');
+      const response: IBuildingSaveResponse | undefined = await this.postData<
+        IBuildingSaveResponse,
+        IBuildingSaveRequest
+      >(this._endpoint, toRebindRequest(request, projectId, sharepointFolderId), {
+        operation: 'the project the folder id was bound onto',
+        print: { label: 'rebind' }
+      });
       const message: string = (response?.message || '').trim();
 
       if (message) {
-        throw new ApiError(message, { status: 200, statusText: 'OK', url });
+        throw this.refusal(message, this._endpoint);
       }
 
       Log.info(LOG_SOURCE, `Project ${projectId} now carries folder ${sharepointFolderId}.`);
 
       return { isRebound: true, sharepointFolderId, message: '' };
     } catch (error) {
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`Folder ${sharepointFolderId} could not be bound onto project ${projectId}.`)
-      );
+      this.logFailure(error, `Folder ${sharepointFolderId} could not be bound onto project ${projectId}.`);
 
       return {
         isRebound: false,
@@ -420,12 +390,7 @@ export class BuildingService implements IBuildingService {
 
       return { isRecorded: true, rootName, message: '', model };
     } catch (error) {
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`The folder ids of project ${projectId} could not be recorded.`)
-      );
+      this.logFailure(error, `The folder ids of project ${projectId} could not be recorded.`);
 
       return {
         isRecorded: false,
@@ -462,12 +427,7 @@ export class BuildingService implements IBuildingService {
     try {
       return await this.getProjectSubFolders(projectTemplateId, projectId);
     } catch (error) {
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`The folders of project ${projectId} could not be read.`)
-      );
+      this.logFailure(error, `The folders of project ${projectId} could not be read.`);
 
       return undefined;
     }
@@ -505,12 +465,7 @@ export class BuildingService implements IBuildingService {
     } catch (error) {
       // Reached when the site's document library could not be resolved at all, so nothing
       // was attempted. Individual folder failures come back inside the result instead.
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`The project folders could not be created in ${site.url}.`)
-      );
+      this.logFailure(error, `The project folders could not be created in ${site.url}.`);
 
       return undefined;
     }
@@ -528,9 +483,10 @@ export class BuildingService implements IBuildingService {
     const details: IBuildingDetails | undefined = await this.getProject(id);
 
     if (!details || !(Number(details.id) > 0)) {
-      throw new ApiError(
+      throw this.refusal(
         `Project ${id} could not be read back, so it was not saved. Reopen it and try again.`,
-        { status: 200, statusText: 'OK', url: this._apiService.resolveUrl(this._endpoint, { id }) }
+        this._endpoint,
+        { id }
       );
     }
 
@@ -558,32 +514,9 @@ export class BuildingService implements IBuildingService {
     try {
       return await this._projectTemplateService.getSubFolders(projectTemplateId, isBim);
     } catch (error) {
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`The folders of template ${projectTemplateId} could not be read.`)
-      );
+      this.logFailure(error, `The folders of template ${projectTemplateId} could not be read.`);
 
       return undefined;
     }
-  }
-
-  /**
-   * Writes the complete response body to the browser console, exactly as the API sent it -
-   * the `ResponseDetail` envelope included, not just the `data` inside it, because whether
-   * the save was accepted is decided by `success` and `data.message` rather than by the
-   * status code.
-   *
-   * This is how the save is verified during development: the same dev-only dump
-   * `LoginService` makes for the sign-in handshake, and it should be removed alongside it
-   * before shipping to production.
-   *
-   * @param operation - which POST this was. The two share a URL, so the label is the only
-   *   thing telling an insert's dump from the rebind's that follows it.
-   */
-  private _logResponse(url: string, operation: string, payload: unknown): void {
-    Log.info(LOG_SOURCE, `POST ${url} (${operation}) answered.`);
-    console.log(`[${LOG_SOURCE}] POST ${url} (${operation}) response:`, payload);
   }
 }

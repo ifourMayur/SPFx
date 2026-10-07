@@ -4,7 +4,6 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import ProjectAddEdit from './ProjectAddEdit';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { ROUTE_PATHS } from '../../../../models/Navigation';
-import { IProjectListRow } from '../../../../models/ProjectListRow';
 import { ILookupService } from '../../../../services/LookupService';
 
 export interface IProjectAddEditRouteProps {
@@ -12,8 +11,14 @@ export interface IProjectAddEditRouteProps {
   lookupService: ILookupService;
   /** `add` serves `/projects/add`; `edit` serves `/projects/edit/:id`. */
   mode: 'add' | 'edit';
-  /** Listing rows, used to resolve the name of the project being edited. */
-  rows: IProjectListRow[];
+  /**
+   * Names of the projects seen on the listing, keyed by id, used to title the form for the
+   * project being edited.
+   *
+   * A name map rather than the listing's rows: the listing is server-paged and keeps no
+   * rows that outlive it, and the name is the only thing this route ever needed from them.
+   */
+  projectNames: { [projectId: number]: string };
   /** Forms saved earlier in this session, keyed by project id. */
   savedForms: { [projectId: number]: IBuildingForm };
   features: IProjectFormFeatures;
@@ -36,7 +41,7 @@ export interface IProjectAddEditRouteProps {
  * could be rendered from a dialog or another shell unchanged.
  */
 export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): React.ReactElement {
-  const { mode, rows, savedForms, onSave } = props;
+  const { mode, projectNames, savedForms, onSave } = props;
   const parameters = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -63,10 +68,6 @@ export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): R
     return <Navigate to={ROUTE_PATHS.projectList} replace />;
   }
 
-  const row: IProjectListRow | undefined = projectId === undefined
-    ? undefined
-    : rows.filter((candidate: IProjectListRow) => candidate.id === projectId)[0];
-
   return (
     <ProjectAddEdit
       lookupService={props.lookupService}
@@ -75,7 +76,7 @@ export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): R
       key={`${mode}-${projectId || 0}`}
       projectId={projectId}
       initialForm={projectId === undefined ? undefined : savedForms[projectId]}
-      fallbackProjectName={row?.name}
+      fallbackProjectName={projectId === undefined ? undefined : projectNames[projectId]}
       features={props.features}
       clientId={props.clientId}
       clientName={props.clientName}

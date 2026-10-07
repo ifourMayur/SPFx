@@ -2,9 +2,9 @@ import { Log } from '@microsoft/sp-core-library';
 
 import { getEnvironment } from '../config/environment';
 import { MESSAGE_TYPE, unwrapResponseDetail } from '../models/ApiEnvelope';
-import { ApiError } from '../models/ApiError';
 import { IDocumentStorageRequest } from '../models/DocumentStorage';
 import { IApiService } from './ApiService';
+import { BaseApiService } from './BaseApiService';
 
 /**
  * Records which SharePoint folder each of a project's folders ended up as.
@@ -49,9 +49,8 @@ const LOG_SOURCE: string = 'DocumentStorageService';
  */
 const ADD_ACTION: string = 'AddDocumentStorageDetails';
 
-/** Default {@link IDocumentStorageService}, built on `IApiService`. */
-export class DocumentStorageService implements IDocumentStorageService {
-  private readonly _apiService: IApiService;
+/** Default {@link IDocumentStorageService}, built on `BaseApiService`. */
+export class DocumentStorageService extends BaseApiService implements IDocumentStorageService {
   private readonly _endpoint: string;
 
   /**
@@ -64,30 +63,31 @@ export class DocumentStorageService implements IDocumentStorageService {
     apiService: IApiService,
     endpoint: string = getEnvironment().api.endpoints.document
   ) {
-    this._apiService = apiService;
+    super(apiService, LOG_SOURCE);
     this._endpoint = endpoint;
   }
 
   public async addDocumentStorageDetails(model: IDocumentStorageRequest): Promise<void> {
-    const relativeUrl: string = `${this._endpoint}/${ADD_ACTION}`;
-    const url: string = this._apiService.resolveUrl(relativeUrl);
+    const relativeUrl: string = this.route(this._endpoint, ADD_ACTION);
+    const operation: string = "the project's folder ids";
 
-    const payload: unknown = await this._apiService.post<unknown, IDocumentStorageRequest>(
-      relativeUrl,
-      model
-    );
-
-    // Printed before anything is read out of it, for the same reason `BuildingService` does
-    // it in that order: the checks below throw, and the caller swallows what they throw, so
-    // a dump placed after them would stay silent on exactly the responses worth reading.
-    this._logResponse(url, model, payload);
+    // Raw rather than unwrapped, because this endpoint's envelope has to be read twice -
+    // see `_toFaultMessage`. Printed (request and response) before anything is read out of
+    // it: the checks below throw, and the caller swallows what they throw, so a dump placed
+    // after them would stay silent on exactly the responses worth reading. Whether the
+    // folders were recorded is decided by `success` and `messageType` rather than by the
+    // status code. Dev-only; remove it alongside `BuildingService`'s before production.
+    const payload: unknown = await this.postRaw<IDocumentStorageRequest>(relativeUrl, model, {
+      operation,
+      print: { includeRequest: true }
+    });
 
     // Throws on `success: false` - a request the API rejected outright.
-    unwrapResponseDetail<IDocumentStorageRequest>(payload, "the project's folder ids");
+    unwrapResponseDetail<IDocumentStorageRequest>(payload, operation);
 
     const faulted: string = DocumentStorageService._toFaultMessage(payload);
     if (faulted) {
-      throw new ApiError(faulted, { status: 200, statusText: 'OK', url });
+      throw this.refusal(faulted, relativeUrl);
     }
 
     Log.info(
@@ -126,19 +126,5 @@ export class DocumentStorageService implements IDocumentStorageService {
       (envelope.message || '').trim() ||
       'The Web API could not record the project folder ids, without saying why.'
     );
-  }
-
-  /**
-   * Writes the request and the complete response body to the browser console, exactly as
-   * the API sent it - the `ResponseDetail` envelope included, because whether the folders
-   * were recorded is decided by `success` and `messageType` rather than by the status code.
-   *
-   * The same dev-only dump `BuildingService` and `LoginService` make, and it should be
-   * removed alongside them before shipping to production.
-   */
-  private _logResponse(url: string, model: IDocumentStorageRequest, payload: unknown): void {
-    Log.info(LOG_SOURCE, `POST ${url} answered.`);
-    console.log(`[${LOG_SOURCE}] POST ${url} request:`, model);
-    console.log(`[${LOG_SOURCE}] POST ${url} response:`, payload);
   }
 }

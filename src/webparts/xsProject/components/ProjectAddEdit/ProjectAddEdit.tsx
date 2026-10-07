@@ -288,33 +288,9 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
       return;
     }
 
-    // Each level's endpoint takes the ids of every level above it, so the deeper the
-    // level the longer the parameter list. The ids are strings in the form (a `<select>`
-    // value always is) and integers on the wire.
-    const selection: IFolderSelection = form.momFolder;
-    const folderId: number = Number(selection.folderId);
-    const subFolderId: number = Number(selection.subFolderId);
-    let request: Promise<ILookupOption[]>;
-
-    switch (level) {
-      case 'folderId':
-        request = lookupService.getProjectFolders(projectId);
-        break;
-      case 'subFolderId':
-        request = lookupService.getProjectSubFolders(projectId, folderId);
-        break;
-      case 'subSubFolderId':
-        request = lookupService.getProjectSubSubFolders(projectId, folderId, subFolderId);
-        break;
-      default:
-        request = lookupService.getProjectSubSubSubFolders(
-          projectId,
-          folderId,
-          subFolderId,
-          Number(selection.subSubFolderId)
-        );
-        break;
-    }
+    // Which endpoint a level maps to, and which ancestor ids it takes, is the service's
+    // business - this only says which level and what is selected above it.
+    const request: Promise<ILookupOption[]> = lookupService.getFolderLevel(projectId, level, form.momFolder);
 
     this.setState((state: IProjectAddEditState) => ({
       loadingFolderLevels: state.loadingFolderLevels.concat([level])

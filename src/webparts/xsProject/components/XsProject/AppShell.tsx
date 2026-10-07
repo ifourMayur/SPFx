@@ -11,14 +11,24 @@ import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
-import { IProjectListRow } from '../../../../models/ProjectListRow';
+import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
 
 export interface IAppShellProps {
   projectService: IProjectService;
+  /** The paged read behind the overview table, handed straight to `ProjectList`. */
+  projectListingService: IProjectListingService;
   lookupService: ILookupService;
-  rows: IProjectListRow[];
+  /**
+   * Names of the projects seen on the listing this session, keyed by id.
+   *
+   * Only the edit form reads them, for its title. The listing owns no rows of its own that
+   * outlive it - it is server-paged and refetches on mount - so this is all that has to
+   * survive the trip to the form and back.
+   */
+  projectNames: { [projectId: number]: string };
   savedForms: { [projectId: number]: IBuildingForm };
   features: IProjectFormFeatures;
   clientId: string;
@@ -27,6 +37,8 @@ export interface IAppShellProps {
   canAddEdit: boolean;
   /** Whether this user may open the project form, from `canOpenProjectForm`. */
   canOpenForm: boolean;
+  /** `ILoginResponse.domainGroup`, which decides how the listing's cells are coloured. */
+  domainGroup?: number;
   /** Save confirmation, shown by `ProjectList` as a toast. */
   notification?: string;
   /** Title of the SharePoint site chosen in `SharePointSites`, named in the site bar. */
@@ -36,7 +48,8 @@ export interface IAppShellProps {
   /** Returns the user to the site picker. */
   onChangeSite: () => void;
   onSaveProject: (form: IBuildingForm) => Promise<void>;
-  onToggleFavorite: (projectId: number) => void;
+  /** Records the names of a freshly loaded page, for the edit form's title. */
+  onProjectsLoaded: (rows: IProjectListingRow[]) => void;
   onDismissNotification: () => void;
 }
 
@@ -77,13 +90,15 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
 
   const listing = (
     <ProjectList
-      rows={props.rows}
+      listingService={props.projectListingService}
+      lookupService={props.lookupService}
       canAddEdit={props.canAddEdit}
+      domainGroup={props.domainGroup}
       notification={props.notification}
       siteUrl={props.siteUrl}
       onAddProject={goToAdd}
       onEditProject={goToEdit}
-      onToggleFavorite={props.onToggleFavorite}
+      onProjectsLoaded={props.onProjectsLoaded}
       onDismissNotification={props.onDismissNotification}
     />
   );
@@ -92,7 +107,7 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
     <ProjectAddEditRoute
       lookupService={props.lookupService}
       mode={mode}
-      rows={props.rows}
+      projectNames={props.projectNames}
       savedForms={props.savedForms}
       features={props.features}
       clientId={props.clientId}

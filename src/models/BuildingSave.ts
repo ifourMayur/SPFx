@@ -31,6 +31,7 @@
  * update (`BuildingController.Post` routes on `model.Id`).
  */
 
+import type { ILoginResponse } from './Auth';
 import { IBuildingForm, IFolderSelection } from './Building';
 // Type-only on purpose. `DocumentStorage` imports this module's `DOCUMENT_STORAGE_TYPE` as
 // a value, so importing it back as a type keeps the runtime dependency one-way: TypeScript
@@ -432,6 +433,39 @@ export function toHostName(value: string): string {
   const authority: string = withoutScheme.replace(/^[^/@]*@/, '').split(/[/?#]/)[0];
 
   return authority;
+}
+
+/**
+ * The values `POST api/Building` needs that the form does not hold.
+ *
+ * The reference reads all of these out of the MVC session (step 3 of the process
+ * document); a SPFx bundle has no session, so they come from the sign-in response and the
+ * hosting page instead. The hosting page's values are passed in rather than read from
+ * `window` here, which is what keeps this module pure.
+ *
+ * @param login - the sign-in response, or `undefined` if it is not known.
+ * @param site - where a new project's folders are created. Always set by the time a save
+ *   can run: the app is not rendered until a site has been chosen.
+ * @param fallback - what the hosting page knows: the user's display name and the host of
+ *   the SharePoint page the web part is on.
+ */
+export function toProjectSaveContext(
+  login: ILoginResponse | undefined,
+  site: ISharePointSite | undefined,
+  fallback: { userDisplayName: string; hostName: string }
+): IProjectSaveContext {
+  return {
+    clientId: login?.id || 0,
+    clientName: login?.userName || fallback.userDisplayName,
+    accountId: login?.accountId || 0,
+    // `Request.Host.Value` in the reference: the host of the application the user is
+    // signed in to, falling back to the SharePoint page hosting this web part.
+    domainName: toHostName(login?.domainUrl || '') || fallback.hostName,
+    companyName: login?.masterCompanyName || login?.companyName || '',
+    // The reference resolves a file path on the server; a browser has no equivalent.
+    companyLogo: '',
+    site
+  };
 }
 
 /**

@@ -6,6 +6,7 @@ import { ILoginResponse, ISPFxLoginRequest } from '../models/Auth';
 import { IAccessTokenProvider } from './AccessTokenProvider';
 import { IApiTokenStore, apiTokenStore } from './ApiTokenStore';
 import { IApiService } from './ApiService';
+import { BaseApiService } from './BaseApiService';
 
 /** Source name used for SPFx log entries emitted by the sign-in flow. */
 const LOG_SOURCE: string = 'LoginService';
@@ -50,9 +51,11 @@ export interface ILoginService {
  * acquisition stays in the injected `IAccessTokenProvider`. This class orchestrates the
  * two, applies the configured defaults and decides whether a 200 actually signed the user
  * in, so components see one uniform failure path.
+ *
+ * `SPFxLogin` answers an `ILoginResponse`, not a `ResponseDetail` envelope, so this calls
+ * `apiService` directly and reports failure through `errorMessage`/`token` itself.
  */
-export class LoginService implements ILoginService {
-  private readonly _apiService: IApiService;
+export class LoginService extends BaseApiService implements ILoginService {
   private readonly _tokenProvider: IAccessTokenProvider;
   private readonly _endpoint: string;
   private readonly _domainUrl: string;
@@ -75,7 +78,7 @@ export class LoginService implements ILoginService {
     domainUrl: string = getEnvironment().auth.domainUrl,
     tokenStore: IApiTokenStore = apiTokenStore
   ) {
-    this._apiService = apiService;
+    super(apiService, LOG_SOURCE);
     this._tokenProvider = tokenProvider;
     this._endpoint = endpoint;
     this._domainUrl = domainUrl;
@@ -88,35 +91,32 @@ export class LoginService implements ILoginService {
   }
 
   public async login(request: ISPFxLoginRequest): Promise<ILoginResponse> {
-    const relativeUrl: string = `${this._endpoint}/${SPFX_LOGIN_ACTION}`;
+    const relativeUrl: string = this.route(this._endpoint, SPFX_LOGIN_ACTION);
 
     // Typed as possibly undefined because an API that answers 200 with an empty body is a
     // runtime possibility the compiler cannot see.
-    const response: ILoginResponse | undefined = await this._apiService.post<
+    const response: ILoginResponse | undefined = await this.apiService.post<
       ILoginResponse | undefined,
       ISPFxLoginRequest
     >(relativeUrl, request);
 
     this._logResponse(request.domainUrl, response);
 
-    const url: string = this._apiService.resolveUrl(relativeUrl);
-
     if (!response) {
-      throw new ApiError('The Web API returned an empty response to SPFxLogin.', { status: 0, url });
+      throw new ApiError('The Web API returned an empty response to SPFxLogin.', {
+        status: 0,
+        url: this.resolveUrl(relativeUrl)
+      });
     }
 
     // The API reports business failures - a locked account, for example - as a success
     // status with `errorMessage` set, so the status alone does not mean the user is in.
     if (response.errorMessage) {
-      throw new ApiError(response.errorMessage, { status: 200, statusText: 'OK', url });
+      throw this.refusal(response.errorMessage, relativeUrl);
     }
 
     if (!response.token) {
-      throw new ApiError('The Web API signed in without issuing an application token.', {
-        status: 200,
-        statusText: 'OK',
-        url
-      });
+      throw this.refusal('The Web API signed in without issuing an application token.', relativeUrl);
     }
 
     // Published once, here, so every later call through `ApiService` carries

@@ -1,20 +1,32 @@
-import { IProjectListRow } from '../../../../models/ProjectListRow';
+import { IProjectListingRow } from '../../../../models/ProjectListing';
+import { ILookupService } from '../../../../services/LookupService';
+import { IProjectListingService } from '../../../../services/ProjectListingService';
 
 export interface IProjectListProps {
   /**
-   * Rows to show.
+   * The paged read behind the table: `Dashboard/GetListAllWithPagination`.
    *
-   * Owned by `XsProject` rather than this component, so a project saved on the add/edit
-   * form is still in the list when the router brings the user back here - navigating away
-   * unmounts this component and would discard its own state.
+   * The rows are fetched here rather than handed down as a prop, because the table is
+   * server-paged - a page belongs to the search, sort and page number that asked for it,
+   * so whoever owns those has to own the fetch too.
    */
-  rows: IProjectListRow[];
+  listingService: IProjectListingService;
+  /** Supplies the phase columns through `getFolderColumns`. */
+  lookupService: ILookupService;
   /**
    * Whether this user may add or edit projects, from `canAddEditProject`. Hides the Add
    * button and the Edit row action when `false`, matching the reference's
    * `ViewBag.AddEditAccessRights`.
    */
   canAddEdit: boolean;
+  /**
+   * `ILoginResponse.domainGroup`, sent with every page request.
+   *
+   * The one field of the request the Web API does not derive from the caller's token - the
+   * reference reads it from the MVC session - and it decides how every cell in the table
+   * is coloured.
+   */
+  domainGroup?: number;
   /** Success message to show as a self-dismissing toast, e.g. after a save. */
   notification?: string;
   /**
@@ -31,8 +43,14 @@ export interface IProjectListProps {
   onAddProject: () => void;
   /** Called with the project to edit. */
   onEditProject: (projectId: number) => void;
-  /** Called with the project whose favorite star was clicked. */
-  onToggleFavorite: (projectId: number) => void;
   /** Clears {@link notification}, whether dismissed by the user or by the toast's timer. */
   onDismissNotification: () => void;
+  /**
+   * Reports the rows of the page just loaded.
+   *
+   * `XsProject` keeps their names so the edit form can title itself for a project opened
+   * straight from this listing - routing unmounts this component on the way there, so the
+   * name has to be handed to something that outlives it.
+   */
+  onProjectsLoaded: (rows: IProjectListingRow[]) => void;
 }

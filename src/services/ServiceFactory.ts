@@ -8,6 +8,7 @@ import { ApiService, IApiService, IResolvedApiConfiguration, resolveApiConfigura
 import { BuildingService, IBuildingService } from './BuildingService';
 import { ILoginService, LoginService } from './LoginService';
 import { ILookupService, LookupService } from './LookupService';
+import { IProjectListingService, ProjectListingService } from './ProjectListingService';
 import { IProjectService, ProjectService } from './ProjectService';
 import { DocumentStorageService, IDocumentStorageService } from './DocumentStorageService';
 import { IProjectTemplateService, ProjectTemplateService } from './ProjectTemplateService';
@@ -20,6 +21,12 @@ export interface IServiceContainer {
   readonly apiService: IApiService;
   readonly loginService: ILoginService;
   readonly projectService: IProjectService;
+  /**
+   * Paged read behind the project overview table: `Dashboard/GetListAllWithPagination`.
+   * Separate from `projectService`, which is the REST-style `api/projects` the dashboard
+   * reads - only this one exposes per-phase status.
+   */
+  readonly projectListingService: IProjectListingService;
   /** Write path of the project add/edit form: `POST api/Building`. */
   readonly buildingService: IBuildingService;
   /** What a project template defines - today its folder tree. */
@@ -126,6 +133,7 @@ export class ServiceFactory {
         ServiceFactory._resolveDomainUrl(context)
       ),
       projectService: new ProjectService(apiService, getEnvironment().api.endpoints.projects),
+      projectListingService: new ProjectListingService(apiService),
       // Given the template service rather than reaching for it, so the save's own
       // sequencing stays testable without a second transport.
       buildingService: new BuildingService(

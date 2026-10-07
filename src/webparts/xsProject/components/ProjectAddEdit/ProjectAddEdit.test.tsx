@@ -41,6 +41,11 @@ function stubLookupService(overrides?: Partial<ILookupService>): ILookupService 
     getProjectSubFolders: async (): Promise<ILookupOption[]> => [],
     getProjectSubSubFolders: async (): Promise<ILookupOption[]> => [],
     getProjectSubSubSubFolders: async (): Promise<ILookupOption[]> => [],
+    // The form asks for a cascade level through this one method; only the top level has
+    // folders in the stub.
+    getFolderLevel: async (projectId: number, level: string): Promise<ILookupOption[]> =>
+      level === 'folderId' ? STUB.folders : [],
+    getFolderColumns: async (): Promise<ILookupOption[]> => [],
     ...overrides
   };
 }
@@ -70,7 +75,7 @@ describe('ProjectAddEdit', () => {
           <ProjectAddEditRoute
             lookupService={lookupService}
             mode="add"
-            rows={[]}
+            projectNames={{}}
             savedForms={{}}
             features={{ domainGroup: 'taskXs', isGrandChildFolderEnabled: true }}
             clientId="42"
@@ -329,7 +334,7 @@ describe('ProjectAddEdit', () => {
   it('does not request folders while adding, since none exist yet', async () => {
     let folderCalls: number = 0;
     const recording: ILookupService = stubLookupService({
-      getProjectFolders: async (): Promise<ILookupOption[]> => {
+      getFolderLevel: async (): Promise<ILookupOption[]> => {
         folderCalls++;
         return STUB.folders;
       }

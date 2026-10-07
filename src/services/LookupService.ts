@@ -1,11 +1,12 @@
 import { Log } from '@microsoft/sp-core-library';
 
 import { getEnvironment } from '../config/environment';
-import { unwrapResponseDetail } from '../models/ApiEnvelope';
-import { ILookupOption } from '../models/Building';
+import { IFolderSelection, ILookupOption } from '../models/Building';
 import { IApiEndpoints } from '../models/Environment';
+import { FolderLevel } from '../models/FolderTree';
 import { toLookupOptions } from '../models/Lookup';
 import { IApiService } from './ApiService';
+import { BaseApiService } from './BaseApiService';
 
 /**
  * Reference data the project form binds its dropdowns to.
@@ -64,6 +65,37 @@ export interface ILookupService {
     subFolderId: number,
     subSubFolderId: number
   ): Promise<ILookupOption[]>;
+
+  /**
+   * One level of the folder cascade, given what is selected above it.
+   *
+   * The single entry point the form uses, so the component never decides which endpoint a
+   * level maps to or which ancestor ids it takes. Each level's endpoint takes the ids of
+   * every level above it; they are strings in the form (a `<select>` value always is) and
+   * integers on the wire, and this is where one becomes the other.
+   *
+   * @param projectId - the project being edited. Callers skip the call while adding
+   *   (`0`), since a project that does not exist yet has no folders.
+   * @param level - the level to load.
+   * @param selection - the form's current cascade selection; only the levels above
+   *   `level` are read.
+   */
+  getFolderLevel(projectId: number, level: FolderLevel, selection: IFolderSelection): Promise<ILookupOption[]>;
+
+  /**
+   * Every active folder in the system except BIM - the project overview table's phase
+   * columns.
+   *
+   * The odd one out on this interface: not a dropdown, and not scoped to a project. It
+   * lives here because it is the same `List<LookupItem>` reference data every other method
+   * fetches, through the same unwrap and the same mapper, and `BuildingController.ProjectLoadData`
+   * fetches it for exactly this purpose - it is the model of `_ProjectListingScreen`,
+   * whose `<thead>` is built by looping over it.
+   *
+   * The ids are what `ProjectListing.resolveCell` matches each row's `lstDashboard` cell
+   * on, so a column and its cells agree without either knowing the other's ordering.
+   */
+  getFolderColumns(): Promise<ILookupOption[]>;
 }
 
 /** Source name used for SPFx log entries emitted by this service. */
@@ -86,20 +118,20 @@ const ACTIONS = {
   projectFolders: 'GetProjectFolders',
   projectSubFolders: 'GetProjectSubFolders',
   projectSubSubFolders: 'GetProjectSubSubFolders',
-  projectSubSubSubFolders: 'GetProjectSubSubSubFolders'
+  projectSubSubSubFolders: 'GetProjectSubSubSubFolders',
+  folderColumns: 'GetFolderWithoutBIM'
 };
 
 /**
- * Default {@link ILookupService}, built on `IApiService`.
+ * Default {@link ILookupService}, built on `BaseApiService`.
  *
  * Each call is the same three steps: GET the route, unwrap the `ResponseDetail` envelope
  * (which reports failure with `success: false` on an HTTP 200, so the status alone proves
- * nothing), then map `LookupItem` onto `<option>` values. Both of those steps are pure
- * functions in the models layer, so this class stays a thin, readable mapping of business
- * operations onto routes.
+ * nothing), then map `LookupItem` onto `<option>` values. The first two are
+ * `BaseApiService.getData` and the mapping is a pure function in the models layer, so this
+ * class stays a thin, readable mapping of business operations onto routes.
  */
-export class LookupService implements ILookupService {
-  private readonly _apiService: IApiService;
+export class LookupService extends BaseApiService implements ILookupService {
   private readonly _endpoints: IApiEndpoints;
 
   /**
@@ -111,7 +143,7 @@ export class LookupService implements ILookupService {
    *   parameter.
    */
   public constructor(apiService: IApiService, endpoints: IApiEndpoints = getEnvironment().api.endpoints) {
-    this._apiService = apiService;
+    super(apiService, LOG_SOURCE);
     this._endpoints = endpoints;
   }
 
@@ -189,6 +221,31 @@ export class LookupService implements ILookupService {
     });
   }
 
+  public async getFolderLevel(
+    projectId: number,
+    level: FolderLevel,
+    selection: IFolderSelection
+  ): Promise<ILookupOption[]> {
+    const folderId: number = Number(selection.folderId);
+    const subFolderId: number = Number(selection.subFolderId);
+
+    switch (level) {
+      case 'folderId':
+        return this.getProjectFolders(projectId);
+      case 'subFolderId':
+        return this.getProjectSubFolders(projectId, folderId);
+      case 'subSubFolderId':
+        return this.getProjectSubSubFolders(projectId, folderId, subFolderId);
+      default:
+        return this.getProjectSubSubSubFolders(projectId, folderId, subFolderId, Number(selection.subSubFolderId));
+    }
+  }
+
+  /** Phase columns of the project overview table. */
+  public async getFolderColumns(): Promise<ILookupOption[]> {
+    return this._getLookup(this._endpoints.folder, ACTIONS.folderColumns, 'the folder columns');
+  }
+
   /**
    * GET the route, unwrap the envelope, map to options - and say what happened.
    *
@@ -197,8 +254,7 @@ export class LookupService implements ILookupService {
    * indistinguishable from the outside: the call failed, the API reported a failure inside
    * an HTTP 200, or it genuinely returned no rows. The log names which one, and for which
    * endpoint, in any environment.
-   */
-  /**
+   *
    * @param controller - configured controller route, e.g. `endpoints.users`.
    * @param action - the action on that controller, e.g. `GetAllList`.
    * @param operation - human-readable name of what is being fetched, used in the log line
@@ -211,27 +267,19 @@ export class LookupService implements ILookupService {
     operation: string,
     query?: { [name: string]: number }
   ): Promise<ILookupOption[]> {
-    // Same composition as `LoginService`: configured controller route + action, with
-    // `baseUrl` prefixed by `resolveUrl`.
-    const relativeUrl: string = `${controller}/${action}`;
-    const url: string = this._apiService.resolveUrl(relativeUrl, query);
+    const relativeUrl: string = this.route(controller, action);
+    const url: string = this.resolveUrl(relativeUrl, query);
 
     try {
-      const payload: unknown = await this._apiService.get<unknown>(relativeUrl, query);
       const options: ILookupOption[] = toLookupOptions(
-        unwrapResponseDetail<unknown>(payload, operation)
+        await this.getData<unknown>(relativeUrl, query, { operation })
       );
 
       Log.info(LOG_SOURCE, `${url} -> ${options.length} option(s) for ${operation}.`);
 
       return options;
     } catch (error) {
-      Log.error(
-        LOG_SOURCE,
-        error instanceof Error
-          ? error
-          : new Error(`${url} failed while loading ${operation}.`)
-      );
+      this.logFailure(error, `${url} failed while loading ${operation}.`);
 
       throw error;
     }

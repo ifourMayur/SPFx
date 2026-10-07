@@ -34,6 +34,7 @@ import type { ISharePointSite } from '../../../../models/SharePointSite';
 import type { IBuildingService } from '../../../../services/BuildingService';
 import type { ILoginService } from '../../../../services/LoginService';
 import type { ILookupService } from '../../../../services/LookupService';
+import type { IProjectListingService } from '../../../../services/ProjectListingService';
 import type { IProjectService } from '../../../../services/ProjectService';
 import type { ISharePointSiteService } from '../../../../services/SharePointSiteService';
 import type { IBuildingForm, ILookupOption } from '../../../../models/Building';
@@ -42,7 +43,70 @@ import type {
   IProjectSaveContext,
   IProjectSaveResult
 } from '../../../../models/BuildingSave';
-import { SAMPLE_PROJECT_ROWS, nextProjectId } from '../../../../models/ProjectListRow';
+import type {
+  IProjectListPage,
+  IProjectListQuery,
+  IProjectListingRow
+} from '../../../../models/ProjectListing';
+
+/**
+ * A stand-in for the projects the Web API holds, shared by the services that read and
+ * write them.
+ *
+ * The listing is server-paged, so "the project I just saved is in the list" only means
+ * anything if the save reaches the same store the listing pages over - the real listing
+ * refetches when the router brings the user back, and gets whatever the API now holds.
+ *
+ * A new project is prepended, which is where a newly created project shows up on the real
+ * screen: the listing pages at ten rows and the user is returned to page one after saving.
+ */
+interface IFakeProject {
+  id: number;
+  name: string;
+}
+
+/** Seventeen projects, so a save takes the count to the eighteen the tests below expect. */
+function createProjectStore(): IFakeProject[] {
+  const store: IFakeProject[] = [];
+
+  for (let index: number = 1; index <= 17; index++) {
+    store.push({ id: index, name: `Sample project ${index}` });
+  }
+
+  return store;
+}
+
+/** One stored project as `Dashboard/GetListAllWithPagination` would report it. */
+function toListingRow(project: IFakeProject): IProjectListingRow {
+  return {
+    buildingId: project.id,
+    encryBuildingId: String(project.id),
+    buildingName: project.name,
+    isFavorite: false,
+    contactPerson: '',
+    maintenanceFolderId: 6,
+    isMaintenanceFolderAvailable: false,
+    cells: []
+  };
+}
+
+/** Pages over {@link createProjectStore}, searching and paging as the server does. */
+function stubListingService(store: IFakeProject[]): IProjectListingService {
+  return {
+    getProjectPage: async (query: IProjectListQuery): Promise<IProjectListPage> => {
+      const term: string = query.search.toLowerCase();
+      const matching: IFakeProject[] = store.filter(
+        (project: IFakeProject) => project.name.toLowerCase().indexOf(term) > -1
+      );
+      const start: number = (query.page - 1) * query.pageSize;
+
+      return {
+        recordsTotal: matching.length,
+        rows: matching.slice(start, start + query.pageSize).map(toListingRow)
+      };
+    }
+  };
+}
 
 function loginResponse(userRoleId: number, domainGroup: number): ILoginResponse {
   return {
@@ -85,7 +149,10 @@ function stubLookupService(): ILookupService {
     getProjectFolders: async (): Promise<ILookupOption[]> => [],
     getProjectSubFolders: async (): Promise<ILookupOption[]> => [],
     getProjectSubSubFolders: async (): Promise<ILookupOption[]> => [],
-    getProjectSubSubSubFolders: async (): Promise<ILookupOption[]> => []
+    getProjectSubSubSubFolders: async (): Promise<ILookupOption[]> => [],
+    getFolderLevel: async (): Promise<ILookupOption[]> => [],
+    // The listing's phase columns, from `Folder/GetFolderWithoutBIM`.
+    getFolderColumns: async (): Promise<ILookupOption[]> => [{ id: '1', name: 'Administratie' }]
   };
 }
 
@@ -93,12 +160,15 @@ function stubLookupService(): ILookupService {
  * A save that behaves like `POST api/Building`: it echoes an update's id back and assigns
  * a fresh one to an insert.
  *
- * New ids continue the sample list's own numbering rather than starting from `1`, so the
+ * New ids continue the store's own numbering rather than starting from `1`, so the
  * routing assertions below (`#/projects/edit/18`) keep meaning "the project that was just
- * created" instead of colliding with an existing sample row.
+ * created" instead of colliding with a project that is already there.
+ *
+ * It writes through to `store`, so the listing sees the save when it refetches - which is
+ * what the real screen does.
  */
-function stubBuildingService(): IBuildingService {
-  let nextId: number = nextProjectId(SAMPLE_PROJECT_ROWS);
+function stubBuildingService(store: IFakeProject[]): IBuildingService {
+  let nextId: number = store.length + 1;
 
   return {
     getProject: async (id: number): Promise<IBuildingDetails | undefined> => ({ id }),
@@ -109,6 +179,15 @@ function stubBuildingService(): IBuildingService {
     ): Promise<IProjectSaveResult> => {
       const isCreated: boolean = form.id <= 0;
       const projectId: number = isCreated ? nextId++ : form.id;
+      const existing: IFakeProject | undefined = store.filter(
+        (project: IFakeProject) => project.id === projectId
+      )[0];
+
+      if (existing) {
+        existing.name = form.buildingName.trim();
+      } else {
+        store.unshift({ id: projectId, name: form.buildingName.trim() });
+      }
 
       return {
         projectId,
@@ -192,15 +271,18 @@ function stubServices(
 ): {
   loginService: ILoginService;
   projectService: IProjectService;
+  projectListingService: IProjectListingService;
   buildingService: IBuildingService;
   lookupService: ILookupService;
   sharePointSiteService: ISharePointSiteService;
 } {
   const response: ILoginResponse = loginResponse(userRoleId, domainGroup);
+  const store: IFakeProject[] = createProjectStore();
 
   return {
     lookupService: stubLookupService(),
-    buildingService: stubBuildingService(),
+    projectListingService: stubListingService(store),
+    buildingService: stubBuildingService(store),
     sharePointSiteService: siteService || stubSiteService(),
     loginService: {
       login: async (_request: ISPFxLoginRequest) => response,
@@ -208,10 +290,6 @@ function stubServices(
     } as ILoginService,
     projectService: {
       getProjects: async () => [],
-      getProjectById: async () => ({}),
-      createProject: async () => ({}),
-      updateProject: async () => ({}),
-      deleteProject: async () => undefined
     } as unknown as IProjectService
   };
 }
@@ -251,6 +329,7 @@ describe('XsProject', () => {
           environmentMessage="e"
           userDisplayName="Mayur"
           projectService={services.projectService}
+          projectListingService={services.projectListingService}
           buildingService={services.buildingService}
           lookupService={services.lookupService}
           loginService={services.loginService}
@@ -450,7 +529,7 @@ describe('XsProject', () => {
     expect(window.location.hash).toBe('#/projects');
     expect(host.textContent).toContain('Project  Added successfully!');
     expect(host.textContent).toContain('Smoke test project');
-    // 17 sample rows + the new one.
+    // 17 projects already there + the new one, as the listing's refetch now reports it.
     expect(host.textContent).toContain('of 18 entries');
   });
 

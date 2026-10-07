@@ -1,5 +1,7 @@
 import { ISPHttpClientOptions, SPHttpClient, SPHttpClientResponse } from '@microsoft/sp-http';
 
+import { ApiError } from '../models/ApiError';
+
 /**
  * Minimal transport abstraction over SharePoint's own REST API.
  *
@@ -12,16 +14,17 @@ export interface ISpHttpClient {
   /**
    * Issues a `GET` and parses the JSON body.
    *
-   * Rejects when SharePoint answers a failure status, so a caller never mistakes an error
-   * page for an empty result.
+   * Rejects with an `ApiError` when SharePoint answers a failure status, so a caller never
+   * mistakes an error page for an empty result.
    */
   getJson<T>(url: string): Promise<T>;
 
   /**
    * Issues a `POST` and parses the JSON body, tolerating an empty one.
    *
-   * Rejects on a failure status, carrying SharePoint's own message - which is the only way
-   * to tell "a folder of that name already exists" from "you may not write here".
+   * Rejects with an `ApiError` on a failure status, carrying SharePoint's own message -
+   * which is the only way to tell "a folder of that name already exists" from "you may not
+   * write here".
    */
   postJson<T>(url: string, body?: unknown): Promise<T>;
 }
@@ -48,7 +51,7 @@ export class SpRestHttpClient implements ISpHttpClient {
       SpRestHttpClient._options()
     );
 
-    return SpRestHttpClient._readJson<T>(response);
+    return SpRestHttpClient._readJson<T>(response, url);
   }
 
   public async postJson<T>(url: string, body?: unknown): Promise<T> {
@@ -58,7 +61,7 @@ export class SpRestHttpClient implements ISpHttpClient {
       SpRestHttpClient._options(body)
     );
 
-    return SpRestHttpClient._readJson<T>(response);
+    return SpRestHttpClient._readJson<T>(response, url);
   }
 
   /**
@@ -78,8 +81,12 @@ export class SpRestHttpClient implements ISpHttpClient {
    * Text first because the body is needed on both paths and a response may only be read
    * once: on failure it carries SharePoint's error message, and on success it may be empty
    * (some writes answer `204`), which `response.json()` would reject on.
+   *
+   * A failure is raised as the same `ApiError` the Web API's transport raises, carrying the
+   * status and URL, so a component handles a refusal from either back end the same way -
+   * `isAuthorizationError` recognises a SharePoint 403 just as it does a Web API one.
    */
-  private static async _readJson<T>(response: SPHttpClientResponse): Promise<T> {
+  private static async _readJson<T>(response: SPHttpClientResponse, url: string): Promise<T> {
     let text: string = '';
 
     try {
@@ -89,9 +96,10 @@ export class SpRestHttpClient implements ISpHttpClient {
     }
 
     if (!response.ok) {
-      throw new Error(
+      throw new ApiError(
         SpRestHttpClient._toErrorMessage(text) ||
-          `SharePoint request failed: ${response.status} ${response.statusText}`
+          `SharePoint request failed: ${response.status} ${response.statusText}`,
+        { status: response.status, statusText: response.statusText, url }
       );
     }
 

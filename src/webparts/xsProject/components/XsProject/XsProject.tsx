@@ -12,10 +12,10 @@ import welcomeDark from '../../assets/welcome-dark.png';
 import welcomeLight from '../../assets/welcome-light.png';
 import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm, IProjectFormFeatures, toDomainGroup } from '../../../../models/Building';
-import { IProjectSaveContext, IProjectSaveResult, toHostName } from '../../../../models/BuildingSave';
+import { IProjectSaveContext, IProjectSaveResult, toProjectSaveContext } from '../../../../models/BuildingSave';
 import { IFolderProvisionFailure, IFolderProvisionResult } from '../../../../models/SharePointFolder';
 import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
-import { IProjectListRow, SAMPLE_PROJECT_ROWS, upsertProjectRow } from '../../../../models/ProjectListRow';
+import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ISharePointSite } from '../../../../models/SharePointSite';
 
 /** `BuildingResource.msgAddProject` / `msgUpdateProject`, including their double spaces. */
@@ -33,8 +33,10 @@ const SAVE_MESSAGES = {
  * rather than a second authentication mechanism - and then only once `SharePointSites`
  * reports the site the user chose to work in.
  *
- * It also owns the project rows and the forms saved during the session, because routing
- * unmounts the page that would otherwise hold them - see `IXsProjectState`.
+ * It also owns the forms saved during the session, and the names of the projects the
+ * listing has shown, because routing unmounts the page that would otherwise hold them -
+ * see `IXsProjectState`. The listing's rows are not among them: it is server-paged and
+ * refetches when the router brings the user back to it.
  */
 export default class XsProject extends React.Component<IXsProjectProps, IXsProjectState> {
   public constructor(props: IXsProjectProps) {
@@ -42,7 +44,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
 
     this.state = {
       isAuthenticated: false,
-      rows: SAMPLE_PROJECT_ROWS,
+      projectNames: {},
       savedForms: {}
     };
   }
@@ -54,6 +56,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       environmentMessage,
       userDisplayName,
       projectService,
+      projectListingService,
       lookupService,
       loginService,
       sharePointSiteService
@@ -63,7 +66,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       login,
       selectedSite,
       isChangingSite,
-      rows,
+      projectNames,
       savedForms,
       notification
     } = this.state;
@@ -94,20 +97,22 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
           <HashRouter>
             <AppShell
               projectService={projectService}
+              projectListingService={projectListingService}
               lookupService={lookupService}
-              rows={rows}
+              projectNames={projectNames}
               savedForms={savedForms}
               features={this._getFeatures()}
               clientId={login ? String(login.id) : ''}
               clientName={login?.userName || userDisplayName}
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
+              domainGroup={login?.domainGroup}
               notification={notification}
               siteTitle={selectedSite.title}
               siteUrl={selectedSite.url}
               onChangeSite={this._onChangeSite}
               onSaveProject={this._onSaveProject}
-              onToggleFavorite={this._onToggleFavorite}
+              onProjectsLoaded={this._onProjectsLoaded}
               onDismissNotification={this._onDismissNotification}
             />
           </HashRouter>
@@ -171,9 +176,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
   /**
    * Sends the user back to the picker.
    *
-   * Only the site changes: the sign-in, the project rows and the forms saved this session
-   * all survive, because changing site is a change of where the user is working - not a
-   * sign-out.
+   * Only the site changes: the sign-in and the forms saved this session both survive,
+   * because changing site is a change of where the user is working - not a sign-out.
    */
   private _onChangeSite = (): void => {
     this.setState({ isChangingSite: true });
@@ -188,8 +192,10 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
    * So everything below the call only runs once the API has accepted the save - which is
    * also why nothing is caught here.
    *
-   * The listing rows are still local sample data, so the saved project is folded into them
-   * here, under the id the API assigned rather than a locally allocated one.
+   * Nothing is folded into the listing here: it is server-paged, and the router unmounts
+   * it on the way to the form, so it refetches - and shows the saved project - on the way
+   * back. Only the name is kept, under the id the API assigned rather than a locally
+   * allocated one, so the form can title itself if the project is reopened.
    */
   private _onSaveProject = async (form: IBuildingForm): Promise<void> => {
     const result: IProjectSaveResult = await this.props.buildingService.saveProject(
@@ -200,9 +206,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
     const saved: IBuildingForm = { ...form, id: result.projectId };
 
     this.setState((state: IXsProjectState) => ({
-      // `upsertProjectRow` adds an id it has not seen rather than dropping it, which is
-      // what puts a newly created project at the top of the list.
-      rows: upsertProjectRow(state.rows, saved).rows,
+      projectNames: { ...state.projectNames, [result.projectId]: saved.buildingName.trim() },
       // Stored under the id the API gave it, so a project created with `id: 0` can be
       // reopened for editing under its new id.
       savedForms: { ...state.savedForms, [result.projectId]: saved },
@@ -240,37 +244,33 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
   }
 
   /**
-   * The values `POST api/Building` needs that the form does not hold.
-   *
-   * The reference reads all of these out of the MVC session (step 3 of the process
-   * document); a SPFx bundle has no session, so they come from the sign-in response and
-   * the hosting page instead.
+   * The values `POST api/Building` needs that the form does not hold; the mapping itself
+   * is `toProjectSaveContext`, and this only supplies what the hosting page knows.
    */
   private _getSaveContext(): IProjectSaveContext {
-    const login: ILoginResponse | undefined = this.state.login;
-
-    return {
-      clientId: login?.id || 0,
-      clientName: login?.userName || this.props.userDisplayName,
-      accountId: login?.accountId || 0,
-      // `Request.Host.Value` in the reference: the host of the application the user is
-      // signed in to, falling back to the SharePoint page hosting this web part.
-      domainName: toHostName(login?.domainUrl || '') || window.location.host,
-      companyName: login?.masterCompanyName || login?.companyName || '',
-      // The reference resolves a file path on the server; a browser has no equivalent.
-      companyLogo: '',
-      // Where a new project's folders are created. Always set by the time a save can run:
-      // the app is not rendered until a site has been chosen.
-      site: this.state.selectedSite
-    };
+    return toProjectSaveContext(this.state.login, this.state.selectedSite, {
+      userDisplayName: this.props.userDisplayName,
+      hostName: window.location.host
+    });
   }
 
-  private _onToggleFavorite = (projectId: number): void => {
-    this.setState((state: IXsProjectState) => ({
-      rows: state.rows.map((row: IProjectListRow) =>
-        row.id === projectId ? { ...row, isFavorite: !row.isFavorite } : row
-      )
-    }));
+  /**
+   * Remembers the names of the page the listing just loaded.
+   *
+   * The edit form is reached from a row, and the router unmounts the listing on the way
+   * there - so without this the form would open with no title for a project the user is
+   * looking straight at.
+   */
+  private _onProjectsLoaded = (rows: IProjectListingRow[]): void => {
+    this.setState((state: IXsProjectState) => {
+      const projectNames: { [projectId: number]: string } = { ...state.projectNames };
+
+      rows.forEach((row: IProjectListingRow): void => {
+        projectNames[row.buildingId] = row.buildingName;
+      });
+
+      return { projectNames };
+    });
   };
 
   /** Clears the save toast, whether dismissed by the user or by its own timer. */

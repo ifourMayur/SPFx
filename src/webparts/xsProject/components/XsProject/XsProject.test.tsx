@@ -37,6 +37,8 @@ import type { ILookupService } from '../../../../services/LookupService';
 import type { IProjectListingService } from '../../../../services/ProjectListingService';
 import type { IProjectService } from '../../../../services/ProjectService';
 import type { ISharePointSiteService } from '../../../../services/SharePointSiteService';
+import type { ISubscriptionService } from '../../../../services/SubscriptionService';
+import type { FeatureCode, IFeatureSubscription } from '../../../../models/FeatureSubscription';
 import type { IBuildingForm, ILookupOption } from '../../../../models/Building';
 import type {
   IBuildingDetails,
@@ -264,6 +266,25 @@ function flakySiteService(): ISharePointSiteService {
   };
 }
 
+/** ED Control bought, everything else not - and no Marketplace links configured. */
+function stubSubscriptionService(): ISubscriptionService {
+  const subscription = (feature: FeatureCode): IFeatureSubscription => ({
+    feature,
+    state: feature === 'ED_CONTROL' ? 'active' : 'inactive',
+    isActive: feature === 'ED_CONTROL',
+    isEnabled: feature === 'ED_CONTROL',
+    subscriptionStatus: feature === 'ED_CONTROL' ? 'Active' : 'Inactive',
+    planName: feature === 'ED_CONTROL' ? 'Professional' : undefined
+  });
+
+  return {
+    links: { marketplaceOfferUrl: '', manageSubscriptionUrl: '' },
+    getSubscriptionStatus: async (): Promise<IFeatureSubscription[]> => [subscription('ED_CONTROL')],
+    getFeatureSubscription: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature),
+    setFeatureEnabled: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature)
+  };
+}
+
 function stubServices(
   userRoleId: number,
   domainGroup: number,
@@ -275,6 +296,7 @@ function stubServices(
   buildingService: IBuildingService;
   lookupService: ILookupService;
   sharePointSiteService: ISharePointSiteService;
+  subscriptionService: ISubscriptionService;
 } {
   const response: ILoginResponse = loginResponse(userRoleId, domainGroup);
   const store: IFakeProject[] = createProjectStore();
@@ -284,6 +306,7 @@ function stubServices(
     projectListingService: stubListingService(store),
     buildingService: stubBuildingService(store),
     sharePointSiteService: siteService || stubSiteService(),
+    subscriptionService: stubSubscriptionService(),
     loginService: {
       login: async (_request: ISPFxLoginRequest) => response,
       loginAsCurrentUser: async () => response
@@ -334,6 +357,7 @@ describe('XsProject', () => {
           lookupService={services.lookupService}
           loginService={services.loginService}
           sharePointSiteService={services.sharePointSiteService}
+          subscriptionService={services.subscriptionService}
         />,
         host
       );
@@ -682,5 +706,26 @@ describe('XsProject', () => {
     // ...but the form gate does not, matching the reference's `return View("Error")`.
     expect(host.textContent).toContain('does not have permission');
     expect(host.querySelector('#project-buildingName')).toBeNull();
+  });
+
+  it('shows the ED Control switch, on, once the API reports it subscribed', async () => {
+    await mount();
+    await clickText('ED Control');
+
+    const toggle: HTMLInputElement | null = host.querySelector('#feature-switch-ED_CONTROL');
+
+    expect(window.location.hash).toBe('#/ed-control');
+    expect(toggle?.checked).toBe(true);
+    // An Admin may change it.
+    expect(toggle?.disabled).toBe(false);
+    expect(host.textContent).toContain('Plan: Professional');
+  });
+
+  it('shows a Consultant the ED Control switch without letting them change it', async () => {
+    await mount(UserRole.Consultant);
+    await clickText('ED Control');
+
+    expect((host.querySelector('#feature-switch-ED_CONTROL') as HTMLInputElement).disabled).toBe(true);
+    expect(host.textContent).toContain('You do not have permission to change this setting.');
   });
 });

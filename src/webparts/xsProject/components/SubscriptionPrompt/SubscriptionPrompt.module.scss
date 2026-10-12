@@ -1,0 +1,80 @@
+.prompt {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  border: 1px solid "[theme:neutralLight, default: #edebe9]";
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.failure {
+  border-color: "[theme:errorText, default: #a4262c]";
+
+  .message {
+    color: "[theme:errorText, default: #a4262c]";
+  }
+}
+
+.heading {
+  margin: 0 0 0.25em;
+  font-weight: 600;
+}
+
+.message {
+  margin: 0 0 0.25em;
+}
+
+.note {
+  margin: 0 0 0.25em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.9em;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-top: 0.75em;
+
+  &:empty {
+    display: none;
+  }
+}
+
+// Same look as the listing's `.addButton`, without its `var(--themePrimary)` trap - see the
+// note above that rule in ProjectList.module.scss.
+.primary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-family: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover,
+  &:focus {
+    background-color: "[theme:themeDark, default: #005a9e]";
+    color: "[theme:white, default: #ffffff]";
+  }
+}
+
+.secondary {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid "[theme:neutralTertiary, default: #a19f9d]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+}

@@ -1,0 +1,93 @@
+.featureSwitch {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+  width: 100%;
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5em 0.75em;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.note {
+  margin: 0;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.9em;
+}
+
+.failure {
+  margin: 0;
+  color: "[theme:errorText, default: #a4262c]";
+}
+
+/* The same switch the project form draws for its own toggles (ProjectAddEdit.module.scss),
+   laid out on one line because here it is the page's only control. */
+.toggleField {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75em;
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.toggleLabel {
+  font-weight: 600;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 20px;
+
+  input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+
+    &:checked + .toggleTrack {
+      background-color: "[theme:themePrimary, default: #0078d4]";
+    }
+
+    &:checked + .toggleTrack::after {
+      transform: translateX(16px);
+    }
+
+    &:focus-visible + .toggleTrack {
+      outline: 2px solid "[theme:themeDark, default: #005a9e]";
+      outline-offset: 2px;
+    }
+
+    &:disabled + .toggleTrack {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.toggleTrack {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background-color: "[theme:neutralTertiaryAlt, default: #c8c6c4]";
+  transition: background-color 0.15s ease;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: "[theme:white, default: #ffffff]";
+    transition: transform 0.15s ease;
+  }
+}

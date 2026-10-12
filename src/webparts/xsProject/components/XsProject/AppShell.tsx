@@ -9,18 +9,23 @@ import ProjectAddEditRoute from '../ProjectAddEdit/ProjectAddEditRoute';
 import Document from '../Document/Document';
 import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
+import EdControl from '../EdControl/EdControl';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
+import { isMarketplaceReturn } from '../../../../models/FeatureSubscription';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
+import { ISubscriptionService } from '../../../../services/SubscriptionService';
 
 export interface IAppShellProps {
   projectService: IProjectService;
   /** The paged read behind the overview table, handed straight to `ProjectList`. */
   projectListingService: IProjectListingService;
   lookupService: ILookupService;
+  /** Which paid features the tenant has bought; gates the ED Control page. */
+  subscriptionService: ISubscriptionService;
   /**
    * Names of the projects seen on the listing this session, keyed by id.
    *
@@ -37,6 +42,8 @@ export interface IAppShellProps {
   canAddEdit: boolean;
   /** Whether this user may open the project form, from `canOpenProjectForm`. */
   canOpenForm: boolean;
+  /** Whether this user may switch paid features on or off, from `canManageFeatureSubscriptions`. */
+  canManageFeatures: boolean;
   /** `ILoginResponse.domainGroup`, which decides how the listing's cells are coloured. */
   domainGroup?: number;
   /** Save confirmation, shown by `ProjectList` as a toast. */
@@ -142,6 +149,18 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
           <Route path={ROUTE_PATHS.projectDocument} element={<Document />} />
           <Route path={ROUTE_PATHS.search} element={<Search />} />
           <Route path={ROUTE_PATHS.suppliers} element={<Suppliers />} />
+          {/* The query string sits inside the fragment, `#/ed-control?subscription=returned`,
+              which is where the Marketplace landing page sends the user back to. */}
+          <Route
+            path={ROUTE_PATHS.edControl}
+            element={
+              <EdControl
+                subscriptionService={props.subscriptionService}
+                canManage={props.canManageFeatures}
+                isReturningFromMarketplace={isMarketplaceReturn(location.search)}
+              />
+            }
+          />
           {/* `/` and anything unrecognised land on the view the web part opened on
               before it had routes. `replace` keeps the bad path out of history. */}
           <Route path="*" element={<Navigate to={DEFAULT_ROUTE_PATH} replace />} />

@@ -19,3 +19,4 @@ export * from './SharePointFolderService';
 export * from './ServiceFactory';
 export * from './SharePointHttpClient';
 export * from './SharePointSiteService';
+export * from './SubscriptionService';

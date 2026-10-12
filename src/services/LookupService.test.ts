@@ -230,7 +230,8 @@ describe('LookupService - endpoint composition', () => {
       tenderTemplates: 'TenderTemplate',
       suppliers: 'Issuer',
       dashboard: 'Dashboard',
-      folder: 'RenamedFolder'
+      folder: 'RenamedFolder',
+      subscription: 'Subscription'
     };
 
     const service = new LookupService(

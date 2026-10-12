@@ -1,4 +1,5 @@
 import { IRequestHeaders } from './ApiResponse';
+import { ISubscriptionLinks } from './FeatureSubscription';
 
 /**
  * Contracts for the solution-wide environment configuration.
@@ -39,6 +40,12 @@ export interface IApiEndpoints {
    * phase columns.
    */
   readonly folder: string;
+  /**
+   * `SubscriptionController` route; `features` and `features/{featureCode}` hang off it -
+   * which paid features the caller's tenant has bought through Microsoft Marketplace.
+   * Not the existing `Subscriptions` controller, which reports account plan caps.
+   */
+  readonly subscription: string;
 }
 
 /** Everything the API layer needs to talk to the Web API in a given environment. */
@@ -88,6 +95,8 @@ export interface IEnvironmentConfiguration {
   readonly api: IApiEnvironmentSettings;
   readonly auth: IAuthEnvironmentSettings;
   readonly ui: IUiEnvironmentSettings;
+  /** Where the Subscribe and Manage subscription actions of a paid feature lead. */
+  readonly subscription: ISubscriptionLinks;
   /** When true, the API layer writes request/response diagnostics to the SPFx log. */
   readonly enableVerboseLogging: boolean;
 }

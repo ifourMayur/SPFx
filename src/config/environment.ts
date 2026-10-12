@@ -1,3 +1,4 @@
+import { ISubscriptionLinks } from '../models/FeatureSubscription';
 import {
   EnvironmentName,
   IApiEndpoints,
@@ -20,6 +21,7 @@ import {
  *   getEnvironment().api.endpoints ->  ProjectService / LoginService
  *   getEnvironment().auth          ->  ServiceFactory  ->  LoginService
  *   getEnvironment().ui            ->  components
+ *   getEnvironment().subscription  ->  ServiceFactory  ->  SubscriptionService
  *
  * SPFx bundles run in the browser, so there is no `process.env` / `.env` file to
  * read at runtime. Configuration therefore lives in this typed module, and the
@@ -48,7 +50,8 @@ const ENDPOINTS: IApiEndpoints = {
   suppliers: 'Issuer',
   document: 'Document',
   dashboard: 'Dashboard',
-  folder: 'Folder'
+  folder: 'Folder',
+  subscription: 'Subscription'
 };
 
 /**
@@ -75,6 +78,41 @@ const AUTH_DEFAULTS: IAuthEnvironmentSettings = {
 const UI_DEFAULTS: IUiEnvironmentSettings = {
   projectListTitle: 'Projects',
   maxProjectsToDisplay: 50
+};
+
+/**
+ * Microsoft Marketplace links behind a paid feature's Subscribe and Manage subscription
+ * actions, one entry per environment in {@link ENVIRONMENTS} so a test tenant can point at
+ * a preview offer while production points at the live one. This is the only file that
+ * holds them.
+ *
+ * - `marketplaceOfferUrl` - the XSProject SaaS offer's listing, copied from Partner
+ *   Center. The user picks a plan and pays there; nothing about payment passes through
+ *   this client.
+ * - `manageSubscriptionUrl` - where an existing subscription is changed or cancelled: the
+ *   publisher's own subscription-management page if there is one, otherwise the Microsoft
+ *   365 admin center's "Your products" page, where Marketplace SaaS purchases are listed.
+ *
+ * Empty means "not configured", and hides that action rather than offering a dead link -
+ * see `isNavigableUrl` in `src/models/FeatureSubscription.ts`. Fill in the offer URL here
+ * once the offer is published.
+ */
+const SUBSCRIPTION_NOT_CONFIGURED: ISubscriptionLinks = {
+  marketplaceOfferUrl: '',
+  manageSubscriptionUrl: ''
+};
+
+/**
+ * **Demo links for local development only**, so the Subscribe and Manage subscription
+ * actions can be exercised before the XSProject offer exists. They open Microsoft
+ * Marketplace's home page and the Azure portal - not the XSProject plan and checkout
+ * screens, which only exist once the offer is created in Partner Center. Replace the offer
+ * URL with the offer's Partner Center preview link as soon as there is one, and never copy
+ * these into a deployed environment.
+ */
+const SUBSCRIPTION_DEMO: ISubscriptionLinks = {
+  marketplaceOfferUrl: 'https://marketplace.microsoft.com/',
+  manageSubscriptionUrl: 'https://portal.azure.com/'
 };
 
 /** Requests are abandoned after this many milliseconds. Use `0` to disable. */
@@ -107,6 +145,7 @@ const ENVIRONMENTS: { [name in EnvironmentName]: IEnvironmentConfiguration } = {
     },
     auth: AUTH_DEFAULTS,
     ui: UI_DEFAULTS,
+    subscription: SUBSCRIPTION_DEMO,
     enableVerboseLogging: true
   },
 
@@ -121,6 +160,7 @@ const ENVIRONMENTS: { [name in EnvironmentName]: IEnvironmentConfiguration } = {
     },
     auth: AUTH_DEFAULTS,
     ui: UI_DEFAULTS,
+    subscription: SUBSCRIPTION_NOT_CONFIGURED,
     enableVerboseLogging: true
   },
 
@@ -135,6 +175,7 @@ const ENVIRONMENTS: { [name in EnvironmentName]: IEnvironmentConfiguration } = {
     },
     auth: AUTH_DEFAULTS,
     ui: UI_DEFAULTS,
+    subscription: SUBSCRIPTION_NOT_CONFIGURED,
     enableVerboseLogging: false
   },
 
@@ -149,6 +190,7 @@ const ENVIRONMENTS: { [name in EnvironmentName]: IEnvironmentConfiguration } = {
     },
     auth: AUTH_DEFAULTS,
     ui: UI_DEFAULTS,
+    subscription: SUBSCRIPTION_NOT_CONFIGURED,
     enableVerboseLogging: false
   }
 };

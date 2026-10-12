@@ -1,0 +1,25 @@
+.subscriptionStatus {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 1.5em;
+  width: 100%;
+  margin-bottom: 1em;
+  padding: 0.5em 0.75em;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  font-size: 0.9em;
+}
+
+.item {
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.manage {
+  margin-left: auto;
+  color: "[theme:themePrimary, default: #0078d4]";
+
+  &:hover {
+    color: "[theme:themeDark, default: #005a9e]";
+  }
+}

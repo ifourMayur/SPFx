@@ -283,6 +283,30 @@ describe('toBuildingSaveRequest - storage and session values', () => {
     expect(request.imageBytes).toBeUndefined();
   });
 
+  it('sends the chosen site as sharePointSiteURL on an insert', () => {
+    const request: IBuildingSaveRequest = toBuildingSaveRequest(
+      form(),
+      context({ site: { title: 'Projects', url: ' https://contoso.sharepoint.com/sites/projects ', siteId: '' } })
+    );
+
+    expect(request.sharePointSiteURL).toBe('https://contoso.sharepoint.com/sites/projects');
+  });
+
+  it('omits sharePointSiteURL on an insert without a chosen site', () => {
+    expect(toBuildingSaveRequest(form(), context()).sharePointSiteURL).toBeUndefined();
+  });
+
+  it('omits sharePointSiteURL on an update, so Update keeps the stored site', () => {
+    const preserved: IPreservedProjectFields = { documentStorageType: DOCUMENT_STORAGE_TYPE.sharePoint };
+    const request: IBuildingSaveRequest = toBuildingSaveRequest(
+      form({ id: 12 }),
+      context({ site: { title: 'Other', url: 'https://contoso.sharepoint.com/sites/other', siteId: '' } }),
+      preserved
+    );
+
+    expect(request.sharePointSiteURL).toBeUndefined();
+  });
+
   it('passes the session-derived values straight through', () => {
     const request: IBuildingSaveRequest = toBuildingSaveRequest(form(), context());
 

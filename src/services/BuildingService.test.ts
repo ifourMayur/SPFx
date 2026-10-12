@@ -456,6 +456,30 @@ describe('BuildingService - inserting a project', () => {
     expect(requests[0].body.projectName).toBe('Roof replacement');
     expect(requests[0].body.buildingName).toBeUndefined();
   });
+
+  it('sends the chosen SharePoint site as sharePointSiteURL, on the insert and the rebind', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), contextWithSite());
+
+    const writes: IRecordedRequest[] = requests.filter(
+      (request: IRecordedRequest) =>
+        request.method === 'POST' && request.url === 'https://api.example.com/api/Building'
+    );
+
+    // The rebind re-sends the whole body, so the site travels with it rather than being
+    // blanked - and `Update` only assigns a non-empty value anyway.
+    expect(writes.map((request: IRecordedRequest) => request.body.sharePointSiteURL)).toEqual([
+      'https://contoso.sharepoint.com/sites/projects',
+      'https://contoso.sharepoint.com/sites/projects'
+    ]);
+  });
+
+  it('leaves sharePointSiteURL out when no site was chosen', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(), requests).saveProject(form(), CONTEXT);
+
+    expect('sharePointSiteURL' in requests[0].body).toBe(false);
+  });
 });
 
 describe('BuildingService - reading the template folders after a save', () => {
@@ -558,6 +582,18 @@ describe('BuildingService - updating a project', () => {
     expect(body.planningProjectId).toBe('KYP-1');
     expect(body.kypProjectAuthToken).toBe('kyp-token');
     expect(body.isDocumentReviewerEnable).toBe(true);
+  });
+
+  it('does not send sharePointSiteURL, so the site the folders were created in is kept', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(allBodies(UPDATED, envelope(STORED_PROJECT)), requests).saveProject(
+      form({ id: 12 }),
+      contextWithSite()
+    );
+
+    // `Update` ignores an empty value, so leaving it out keeps the stored one; sending the
+    // currently chosen site would point the project somewhere its folders are not.
+    expect('sharePointSiteURL' in requests[1].body).toBe(false);
   });
 
   it('keeps the storage type the project already had, not the one an insert would use', async () => {

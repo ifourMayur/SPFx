@@ -15,6 +15,7 @@ import { IProjectTemplateService, ProjectTemplateService } from './ProjectTempla
 import { ISharePointFolderService, SharePointFolderService } from './SharePointFolderService';
 import { ISpHttpClient, SpRestHttpClient } from './SharePointHttpClient';
 import { ISharePointSiteService, SharePointSiteService } from './SharePointSiteService';
+import { ISubscriptionService, SubscriptionService } from './SubscriptionService';
 
 /** All services available to the components, resolved as interfaces. */
 export interface IServiceContainer {
@@ -43,6 +44,11 @@ export interface IServiceContainer {
    * from the XSProject Web API.
    */
   readonly sharePointSiteService: ISharePointSiteService;
+  /**
+   * Which paid features the tenant has bought through Microsoft Marketplace, read from the
+   * Web API - the source of truth - and cached for the session per feature.
+   */
+  readonly subscriptionService: ISubscriptionService;
 }
 
 /**
@@ -144,6 +150,11 @@ export class ServiceFactory {
         getEnvironment().api.endpoints.building
       ),
       lookupService: new LookupService(apiService),
+      subscriptionService: new SubscriptionService(
+        apiService,
+        getEnvironment().subscription,
+        getEnvironment().api.endpoints.subscription
+      ),
       // Talks to SharePoint, not to the Web API, so it takes the SharePoint transport and
       // the current site - whose `_api` endpoint the tenant-wide search query is addressed
       // to.

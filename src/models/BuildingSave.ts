@@ -183,8 +183,8 @@ export function toPreservedFields(details: IBuildingDetails): IPreservedProjectF
  * the property initializer runs, which is not something to rely on.
  *
  * Fields the reference posts but this screen does not edit - the ED Controls tag rows and
- * ticket source, the KYP planning fields, `SharePointSiteURL` - are absent, matching the
- * sections `ProjectAddEdit` deliberately does not port.
+ * ticket source, the KYP planning fields - are absent, matching the sections
+ * `ProjectAddEdit` deliberately does not port.
  */
 export interface IBuildingSaveRequest {
   /** `0` inserts; a project id updates. */
@@ -249,6 +249,18 @@ export interface IBuildingSaveRequest {
   companyLogo: string;
   /** Echoed back on an update; see {@link IPreservedProjectFields}. */
   sharepointFolderId?: string;
+  /**
+   * `SharePointSiteURL` - the site the project's folders live in, which the reference's
+   * MVC app later reads back to address the project's documents (`SiteWebUrl`). The key is
+   * spelled as System.Text.Json camel-cases the C# name.
+   *
+   * Sent on an **insert only**, as the URL of the site chosen in `SharePointSites` - the
+   * same site {@link IProjectSaveContext.site} creates the folders in. An update leaves it
+   * out: `ProjectController.Update` only assigns it when it is non-empty, so omitting it
+   * keeps the stored site, whereas sending the currently chosen one would point the
+   * project at a site its folders were never created in.
+   */
+  sharePointSiteURL?: string;
   tagData?: string;
   ticketSourceId?: number;
   ticketProjectId?: string;
@@ -481,6 +493,10 @@ export function toProjectSaveContext(
  * fallback to pick - which also keeps that endpoint's Base64-encoded client secret out of
  * the browser.
  *
+ * Also on an insert only, `sharePointSiteURL` carries the chosen site's URL, so the project
+ * records which site its folders are created in. It is left out when no site was chosen,
+ * and on every update - see {@link IBuildingSaveRequest.sharePointSiteURL}.
+ *
  * @param preserved - fields read back from the project, supplied on an **update only**.
  *   Passing them is what stops `ProjectController.Update` from clearing the project's
  *   image, its SharePoint folder id and the third-party integration fields this screen
@@ -516,6 +532,7 @@ export function toBuildingSaveRequest(
     spatialBreakdownId: toIdList(form.spatialBreakdownIds),
     documentStorageType: preserved ? preserved.documentStorageType : DOCUMENT_STORAGE_TYPE.sharePoint,
     imageBytes: uploaded || (preserved ? preserved.imageBytes : undefined),
+    sharePointSiteURL: preserved ? undefined : (context.site?.url || '').trim() || undefined,
     isMaintenanceFolderAvailable: form.isMaintenanceFolderAvailable,
     isEnableBIMFolder: form.isEnableBimFolder,
     isEnableISOFormat: form.isEnableIsoFormat,

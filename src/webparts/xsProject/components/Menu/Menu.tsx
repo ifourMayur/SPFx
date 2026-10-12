@@ -23,6 +23,9 @@ const MENU_ITEMS: IMenuItem[] = [
       { key: 'projectDocument', label: 'Document', path: ROUTE_PATHS.projectDocument }
     ]
   },
+  // Listed whether or not the tenant has bought it: the page itself is where an
+  // unsubscribed user finds out, and subscribes.
+  { key: 'edControl', label: 'ED Control', path: ROUTE_PATHS.edControl },
   { key: 'search', label: 'Search', path: ROUTE_PATHS.search },
   { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers }
 ];

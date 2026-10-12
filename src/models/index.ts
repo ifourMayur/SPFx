@@ -13,6 +13,7 @@ export * from './Building';
 export * from './BuildingSave';
 export * from './BuildingValidation';
 export * from './Environment';
+export * from './FeatureSubscription';
 export * from './FolderTree';
 export * from './Lookup';
 export * from './Navigation';

@@ -79,6 +79,18 @@ export function canAddEditProject(userRoleId: number | undefined): boolean {
 }
 
 /**
+ * True when the role may switch a paid feature (ED Control, …) on or off for the whole
+ * tenant - and so be sent to Microsoft Marketplace to buy it.
+ *
+ * The same roles as {@link canAddEditProject}, `MaintenanceManager` included for the same
+ * reason: it is the role every SPFx user is provisioned with. `SubscriptionController`
+ * applies the identical list server-side, which is the check that counts.
+ */
+export function canManageFeatureSubscriptions(userRoleId: number | undefined): boolean {
+  return canAddEditProject(userRoleId);
+}
+
+/**
  * True when the role may open the project form itself.
  *
  * Deliberately stricter than {@link canAddEditProject}: `BuildingController.AddEdit`

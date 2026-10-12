@@ -14,7 +14,11 @@ import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm, IProjectFormFeatures, toDomainGroup } from '../../../../models/Building';
 import { IProjectSaveContext, IProjectSaveResult, toProjectSaveContext } from '../../../../models/BuildingSave';
 import { IFolderProvisionFailure, IFolderProvisionResult } from '../../../../models/SharePointFolder';
-import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
+import {
+  canAddEditProject,
+  canManageFeatureSubscriptions,
+  canOpenProjectForm
+} from '../../../../models/Permissions';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ISharePointSite } from '../../../../models/SharePointSite';
 
@@ -59,7 +63,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       projectListingService,
       lookupService,
       loginService,
-      sharePointSiteService
+      sharePointSiteService,
+      subscriptionService
     } = this.props;
     const {
       isAuthenticated,
@@ -99,6 +104,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               projectService={projectService}
               projectListingService={projectListingService}
               lookupService={lookupService}
+              subscriptionService={subscriptionService}
               projectNames={projectNames}
               savedForms={savedForms}
               features={this._getFeatures()}
@@ -106,6 +112,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               clientName={login?.userName || userDisplayName}
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
+              canManageFeatures={canManageFeatureSubscriptions(userRoleId)}
               domainGroup={login?.domainGroup}
               notification={notification}
               siteTitle={selectedSite.title}
@@ -118,7 +125,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
           </HashRouter>
         )}
 
-        <div className={styles.welcome}>
+        {/* <div className={styles.welcome}>
           <img alt="" src={isDarkTheme ? welcomeDark : welcomeLight} className={styles.welcomeImage} />
           <h2>Well done, {escape(userDisplayName)}!</h2>
           <div>{environmentMessage}</div>
@@ -139,7 +146,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
             <li><a href="https://aka.ms/spfx-yeoman-api" target="_blank" rel="noreferrer">SharePoint Framework API reference</a></li>
             <li><a href="https://aka.ms/m365pnp" target="_blank" rel="noreferrer">Microsoft 365 Developer Community</a></li>
           </ul>
-        </div>
+        </div> */
+        }
       </section>
     );
   }

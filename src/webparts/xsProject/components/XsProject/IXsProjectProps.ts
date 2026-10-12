@@ -4,6 +4,7 @@ import { ILookupService } from '../../../../services/LookupService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
 import { ISharePointSiteService } from '../../../../services/SharePointSiteService';
+import { ISubscriptionService } from '../../../../services/SubscriptionService';
 
 export interface IXsProjectProps {
   description: string;
@@ -35,4 +36,9 @@ export interface IXsProjectProps {
    * choose between after signing in.
    */
   sharePointSiteService: ISharePointSiteService;
+  /**
+   * Which paid features the tenant has bought through Microsoft Marketplace, passed on to
+   * the pages that gate on it.
+   */
+  subscriptionService: ISubscriptionService;
 }

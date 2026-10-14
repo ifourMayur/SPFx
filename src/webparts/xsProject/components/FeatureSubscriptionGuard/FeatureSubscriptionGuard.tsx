@@ -12,8 +12,8 @@ import { FEATURE_NAMES, IFeatureSubscription } from '../../../../models/FeatureS
  * Renders a paid feature only once the Web API reports that the tenant has bought it.
  *
  * ```tsx
- * <FeatureSubscriptionGuard feature="ED_CONTROL" subscriptionService={...}>
- *   <EdControlContent />
+ * <FeatureSubscriptionGuard feature="MINUTES" subscriptionService={...}>
+ *   <MinutesContent />
  * </FeatureSubscriptionGuard>
  * ```
  *
@@ -23,11 +23,16 @@ import { FEATURE_NAMES, IFeatureSubscription } from '../../../../models/FeatureS
  * line when the answer is active, or `SubscriptionPrompt` when it is pending, suspended,
  * inactive or could not be read.
  *
- * **Only the API's answer opens the gate.** Following Subscribe changes nothing but the
- * wording and when to look again; returning from Marketplace - by switching back to this
- * tab, or via the landing page's `?subscription=returned` redirect - triggers a fresh read
- * rather than being taken as proof of purchase. And this is still only a UI gate: the API
+ * **Only the API's answer opens the gate.** Following Manage subscription changes nothing
+ * but when to look again; returning from Marketplace - by switching back to this tab, or
+ * via the landing page's `?subscription=returned` redirect - triggers a fresh read rather
+ * than being taken as proof of purchase. And this is still only a UI gate: the API
  * endpoints behind a paid feature must check the subscription themselves.
+ *
+ * **The guard sells nothing.** It offers no Subscribe: a purchase is only activated when
+ * the Web API recorded a checkout before it, and that is `FeatureSubscriptionSwitch`'s
+ * job, on the Subscription page (`#/subscription`), which also knows whether this user
+ * and this host may buy.
  *
  * Reads go through `ISubscriptionService.getFeatureSubscription`, which caches per
  * feature for the session, so the router remounting this screen does not ask again; only
@@ -105,7 +110,7 @@ export default class FeatureSubscriptionGuard extends React.Component<
         state={isUnverified || !subscription ? 'error' : FeatureSubscriptionGuard._toLockedState(subscription)}
         links={subscriptionService.links}
         isAwaitingMarketplace={isAwaitingMarketplace}
-        onSubscribe={this._onSubscribe}
+        onManage={this._onManage}
         onCheckAgain={this._onCheckAgain}
       />
     );
@@ -150,11 +155,11 @@ export default class FeatureSubscriptionGuard extends React.Component<
   // matching the pattern `Login` uses for its own click handler.
 
   /**
-   * The user followed Subscribe (or Manage subscription) to Marketplace in a new tab.
+   * The user followed Manage subscription to Marketplace in a new tab.
    *
    * Deliberately changes nothing about the subscription itself: clicking is not paying.
    */
-  private _onSubscribe = (): void => {
+  private _onManage = (): void => {
     this.setState({ isAwaitingMarketplace: true });
   };
 

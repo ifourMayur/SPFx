@@ -266,6 +266,9 @@ function flakySiteService(): ISharePointSiteService {
   };
 }
 
+/** Every purchase token the stubbed subscription service was handed, in order. */
+const activatedTokens: string[] = [];
+
 /** ED Control bought, everything else not - and no Marketplace links configured. */
 function stubSubscriptionService(): ISubscriptionService {
   const subscription = (feature: FeatureCode): IFeatureSubscription => ({
@@ -281,7 +284,11 @@ function stubSubscriptionService(): ISubscriptionService {
     links: { marketplaceOfferUrl: '', manageSubscriptionUrl: '' },
     getSubscriptionStatus: async (): Promise<IFeatureSubscription[]> => [subscription('ED_CONTROL')],
     getFeatureSubscription: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature),
-    setFeatureEnabled: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature)
+    setFeatureEnabled: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature),
+    activateMarketplacePurchase: async (token: string): Promise<IFeatureSubscription> => {
+      activatedTokens.push(token);
+      return subscription('ED_CONTROL');
+    }
   };
 }
 
@@ -324,6 +331,7 @@ describe('XsProject', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     window.location.hash = '';
+    activatedTokens.length = 0;
   });
 
   afterEach(() => {
@@ -358,6 +366,7 @@ describe('XsProject', () => {
           loginService={services.loginService}
           sharePointSiteService={services.sharePointSiteService}
           subscriptionService={services.subscriptionService}
+          isPurchaseAvailable={true}
         />,
         host
       );
@@ -708,24 +717,51 @@ describe('XsProject', () => {
     expect(host.querySelector('#project-buildingName')).toBeNull();
   });
 
-  it('shows the ED Control switch, on, once the API reports it subscribed', async () => {
+  it('shows every paid feature on the Subscription page, ED Control on once the API reports it subscribed', async () => {
     await mount();
-    await clickText('ED Control');
+    await clickText('Subscription');
 
     const toggle: HTMLInputElement | null = host.querySelector('#feature-switch-ED_CONTROL');
 
-    expect(window.location.hash).toBe('#/ed-control');
+    expect(window.location.hash).toBe('#/subscription');
     expect(toggle?.checked).toBe(true);
     // An Admin may change it.
     expect(toggle?.disabled).toBe(false);
     expect(host.textContent).toContain('Plan: Professional');
+    expect((host.querySelector('#feature-switch-KYP') as HTMLInputElement).checked).toBe(false);
+    expect(host.querySelector('#feature-switch-MINUTES')).not.toBeNull();
+    expect(host.querySelector('#feature-switch-TENDER')).not.toBeNull();
   });
 
-  it('shows a Consultant the ED Control switch without letting them change it', async () => {
+  it('shows a Consultant the Subscription page without letting them change it', async () => {
     await mount(UserRole.Consultant);
-    await clickText('ED Control');
+    await clickText('Subscription');
 
     expect((host.querySelector('#feature-switch-ED_CONTROL') as HTMLInputElement).disabled).toBe(true);
     expect(host.textContent).toContain('You do not have permission to change this setting.');
+    expect(host.textContent).toContain('Ask an administrator to subscribe');
+  });
+
+  it('no longer routes the old ED Control page, and lands on the default instead', async () => {
+    window.location.hash = '#/ed-control';
+    await mount();
+
+    expect(window.location.hash).toBe('#/dashboard');
+    expect(host.querySelector('#feature-switch-ED_CONTROL')).toBeNull();
+    expect(host.textContent).not.toContain('ED Control');
+  });
+
+  it('hands the Marketplace token to the API once, then takes it out of the URL', async () => {
+    // Where the Marketplace landing page sends the buyer back to; `+` is part of the token.
+    window.location.hash = '#/subscription?subscription=returned&marketplaceToken=abc%2Bdef+1';
+    await mount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(activatedTokens).toStrictEqual(['abc+def+1']);
+    expect(window.location.hash).toBe('#/subscription?subscription=returned');
+    expect(window.location.hash).not.toContain('marketplaceToken');
+    expect(host.textContent).toContain('ED Control is now active for your organisation');
   });
 });

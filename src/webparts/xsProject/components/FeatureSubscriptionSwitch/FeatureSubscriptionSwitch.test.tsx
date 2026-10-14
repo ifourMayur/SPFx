@@ -1,10 +1,12 @@
 /**
  * Behaviour tests for `FeatureSubscriptionSwitch`: the real component tree over a stubbed
- * `ISubscriptionService`, with `window.open` spied on.
+ * `ISubscriptionService`, with `window.open` answering a fake tab.
  *
- * What they pin down: switching on records the choice and opens Marketplace only when the
- * feature has not been bought; switching on never makes the feature usable by itself; and
- * a failed save puts the switch back.
+ * What they pin down: switching on opens a blank tab inside the click, records the choice
+ * with where Marketplace should send the buyer back to, and only then sends the tab to
+ * Marketplace - or closes it, when the save was refused or nothing is left to buy. Switching
+ * on never makes the feature usable by itself; a failed save puts the switch back; and
+ * where buying is not possible (Teams) or not allowed, nothing is offered for sale.
  *
  * Every `ReactDOM.render` here is unmounted in `afterEach`.
  */
@@ -25,6 +27,12 @@ const MANAGE_URL: string = 'https://portal.azure.com/';
 
 const LINKS: ISubscriptionLinks = { marketplaceOfferUrl: MARKETPLACE_URL, manageSubscriptionUrl: MANAGE_URL };
 
+/** The SharePoint page the tests run on: a workbench query string, and a route in the fragment. */
+const PAGE_PATH: string = '/sites/projects/_layouts/15/workbench.aspx?debug=true&noredir=true';
+const ROUTE_FRAGMENT: string = '#/subscription';
+
+const TEAMS_MESSAGE: string = 'Open XSProject in SharePoint to subscribe';
+
 /** Never bought, switched off - where every tenant starts. */
 const NOT_BOUGHT: IFeatureSubscription = {
   feature: 'ED_CONTROL',
@@ -44,9 +52,23 @@ const ACTIVE: IFeatureSubscription = {
   planName: 'Professional'
 };
 
+/** Switched on but not bought: Marketplace has not (yet) reported a purchase. */
+const ENABLED_NOT_BOUGHT: IFeatureSubscription = { ...NOT_BOUGHT, isEnabled: true };
+
 interface ICalls {
   reads: { feature: FeatureCode; refresh: boolean }[];
-  writes: { feature: FeatureCode; isEnabled: boolean }[];
+  writes: { feature: FeatureCode; isEnabled: boolean; returnUrl: string | undefined }[];
+}
+
+/** What `window.open('', '_blank')` hands back: just the parts the switch touches. */
+interface IFakeTab {
+  opener: unknown;
+  location: { href: string };
+  close: jest.Mock;
+}
+
+function fakeTab(): IFakeTab {
+  return { opener: window, location: { href: '' }, close: jest.fn() };
 }
 
 /**
@@ -56,7 +78,13 @@ interface ICalls {
 function stubService(
   initial: IFeatureSubscription,
   calls: ICalls,
-  options: { failWrites?: boolean; failReads?: boolean; links?: ISubscriptionLinks } = {}
+  options: {
+    failWrites?: boolean;
+    failReads?: boolean;
+    links?: ISubscriptionLinks;
+    /** What the API answers a write with, in place of the stub's own bookkeeping. */
+    answerWrite?: (isEnabled: boolean) => IFeatureSubscription;
+  } = {}
 ): ISubscriptionService & { pay: () => void } {
   let current: IFeatureSubscription = initial;
 
@@ -81,14 +109,26 @@ function stubService(
 
       return current;
     },
-    setFeatureEnabled: async (feature: FeatureCode, isEnabled: boolean): Promise<IFeatureSubscription> => {
-      calls.writes.push({ feature, isEnabled });
+    setFeatureEnabled: async (
+      feature: FeatureCode,
+      isEnabled: boolean,
+      returnUrl?: string
+    ): Promise<IFeatureSubscription> => {
+      calls.writes.push({ feature, isEnabled, returnUrl });
 
       if (options.failWrites) {
         throw new Error('You do not have permission to change this feature.');
       }
 
+      if (options.answerWrite) {
+        current = options.answerWrite(isEnabled);
+        return current;
+      }
+
       return settle(isEnabled);
+    },
+    activateMarketplacePurchase: async (): Promise<IFeatureSubscription> => {
+      throw new Error('The switch never activates a purchase.');
     },
     pay: (): void => {
       current = { ...current, state: 'active', subscriptionStatus: 'Active', isActive: current.isEnabled };
@@ -103,26 +143,36 @@ function newCalls(): ICalls {
 describe('FeatureSubscriptionSwitch', () => {
   let host: HTMLDivElement;
   let openSpy: jest.SpyInstance;
+  let tab: IFakeTab;
+  let originalUrl: string;
+  /** Where Marketplace is expected to send the buyer back to: this page, without its route. */
+  let returnUrl: string;
 
   beforeEach(() => {
     host = document.createElement('div');
     document.body.appendChild(host);
     // jsdom does not navigate; a link's own default action is not what these tests are about.
     host.addEventListener('click', (event: Event) => event.preventDefault());
-    openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
+    tab = fakeTab();
+    openSpy = jest.spyOn(window, 'open').mockImplementation(() => tab as unknown as Window);
+    originalUrl = window.location.href;
+    window.history.replaceState(null, '', PAGE_PATH + ROUTE_FRAGMENT);
+    returnUrl = window.location.origin + PAGE_PATH;
   });
 
   afterEach(() => {
     ReactDOM.unmountComponentAtNode(host);
     host.remove();
     openSpy.mockRestore();
+    window.history.replaceState(null, '', originalUrl);
   });
 
   /** The one `ReactDOM.render` of this file, paired with the unmount in `afterEach`. */
   async function render(
     service: ISubscriptionService,
     canManage: boolean = true,
-    isReturningFromMarketplace: boolean = false
+    isReturningFromMarketplace: boolean = false,
+    isPurchaseAvailable: boolean = true
   ): Promise<void> {
     await act(async () => {
       ReactDOM.render(
@@ -131,10 +181,18 @@ describe('FeatureSubscriptionSwitch', () => {
           subscriptionService={service}
           canManage={canManage}
           isReturningFromMarketplace={isReturningFromMarketplace}
+          isPurchaseAvailable={isPurchaseAvailable}
         />,
         host
       );
     });
+  }
+
+  /** Subscribe in any form - a button, or the plain link it used to be. */
+  function subscribeAction(): HTMLElement | undefined {
+    return Array.prototype.slice
+      .call(host.querySelectorAll('a, button'))
+      .filter((element: HTMLElement) => element.textContent === 'Subscribe')[0];
   }
 
   function toggle(): HTMLInputElement | null {
@@ -165,15 +223,104 @@ describe('FeatureSubscriptionSwitch', () => {
     expect(host.textContent).toContain('Turn on ED Control to subscribe in Microsoft Marketplace.');
   });
 
-  it('switching on records the choice and opens the Marketplace payment screen', async () => {
+  it('switching on records the choice, with the way back, then sends the tab to Marketplace', async () => {
     const calls: ICalls = newCalls();
     await render(stubService(NOT_BOUGHT, calls));
 
     await flip();
 
-    expect(calls.writes).toEqual([{ feature: 'ED_CONTROL', isEnabled: true }]);
-    expect(openSpy).toHaveBeenCalledWith(MARKETPLACE_URL, '_blank', 'noopener,noreferrer');
+    // The return URL is this page as Marketplace can reach it: the query string kept, the
+    // app's route dropped (the landing page appends its own).
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl }]);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(tab.opener).toBeNull();
+    expect(tab.location.href).toBe(MARKETPLACE_URL);
+    expect(tab.close).not.toHaveBeenCalled();
     expect(toggle()?.checked).toBe(true);
+  });
+
+  // Opened after the save had answered, the tab would no longer count as the user's own
+  // action and be popup-blocked; sent to Marketplace before it, a refused save would leave
+  // the buyer paying for a purchase the API has no checkout for.
+  it('opens the tab inside the click, and sends it to Marketplace only once the save is recorded', async () => {
+    const calls: ICalls = newCalls();
+    let answer: (subscription: IFeatureSubscription) => void = () => undefined;
+    await render({
+      ...stubService(NOT_BOUGHT, calls),
+      setFeatureEnabled: (feature: FeatureCode, isEnabled: boolean, url?: string): Promise<IFeatureSubscription> => {
+        calls.writes.push({ feature, isEnabled, returnUrl: url });
+        return new Promise<IFeatureSubscription>((resolve) => {
+          answer = resolve;
+        });
+      }
+    });
+
+    await flip();
+
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl }]);
+    expect(tab.location.href).toBe('');
+    expect(host.textContent).toContain('Saving ED Control');
+
+    await act(async () => {
+      answer(ENABLED_NOT_BOUGHT);
+    });
+
+    expect(tab.location.href).toBe(MARKETPLACE_URL);
+    expect(tab.opener).toBeNull();
+  });
+
+  it('closes the tab and says why when the save is refused', async () => {
+    await render(stubService(NOT_BOUGHT, newCalls(), { failWrites: true }));
+
+    await flip();
+
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(tab.close).toHaveBeenCalledTimes(1);
+    expect(tab.location.href).toBe('');
+    expect(toggle()?.checked).toBe(false);
+    const alert: string | null | undefined = host.querySelector('[role="alert"]')?.textContent;
+    expect(alert).toContain('Unable to update ED Control.');
+    expect(alert).toContain('You do not have permission to change this feature.');
+  });
+
+  it('closes the tab when the API answers that nothing is left to buy', async () => {
+    await render(
+      stubService(NOT_BOUGHT, newCalls(), {
+        // Bought meanwhile, elsewhere: the read this switch started from was out of date.
+        answerWrite: () => ({ ...NOT_BOUGHT, state: 'pending', subscriptionStatus: 'Pending', isEnabled: true })
+      })
+    );
+
+    await flip();
+
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(tab.close).toHaveBeenCalledTimes(1);
+    expect(tab.location.href).toBe('');
+    expect(host.textContent).toContain('Your subscription is being processed.');
+  });
+
+  it('still records the choice when the browser blocks the tab, and offers Marketplace as a link', async () => {
+    const calls: ICalls = newCalls();
+    openSpy.mockImplementation(() => null);
+    await render(stubService(NOT_BOUGHT, calls));
+
+    await flip();
+
+    // The checkout exists once the save is recorded, so following the link is safe.
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl }]);
+    expect(host.textContent).toContain('Your browser blocked the Microsoft Marketplace tab.');
+    const link: HTMLAnchorElement | null = host.querySelector('a[href="' + MARKETPLACE_URL + '"]');
+    expect(link?.target).toBe('_blank');
+    expect(link?.rel).toBe('noopener noreferrer');
+
+    await act(async () => {
+      (link as HTMLAnchorElement).click();
+    });
+
+    // Gone to Marketplace by the link: coming back re-checks, as it does from the tab.
+    expect(host.textContent).toContain('your subscription is being processed');
   });
 
   // The whole point: the switch is a choice, payment is Marketplace's.
@@ -207,8 +354,9 @@ describe('FeatureSubscriptionSwitch', () => {
 
     await flip();
 
+    // No tab flashes open for a feature that is already paid for.
     expect(openSpy).not.toHaveBeenCalled();
-    expect(calls.writes).toEqual([{ feature: 'ED_CONTROL', isEnabled: true }]);
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl }]);
     expect(host.textContent).toContain('Plan: Professional');
   });
 
@@ -230,7 +378,8 @@ describe('FeatureSubscriptionSwitch', () => {
 
     await flip();
 
-    expect(calls.writes).toEqual([{ feature: 'ED_CONTROL', isEnabled: false }]);
+    // Switching off starts no purchase, so it says nothing about where to come back to.
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: false, returnUrl: undefined }]);
     expect(openSpy).not.toHaveBeenCalled();
     expect(toggle()?.checked).toBe(false);
     expect(host.textContent).toContain('ED Control is turned off.');
@@ -265,7 +414,8 @@ describe('FeatureSubscriptionSwitch', () => {
     await flip();
 
     expect(openSpy).not.toHaveBeenCalled();
-    expect(calls.writes.length).toBe(1);
+    // No checkout can exist without an offer to buy, so no way back is sent either.
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl: undefined }]);
   });
 
   it('reports a failed read as unverified, offers no switch, and retries', async () => {
@@ -283,6 +433,67 @@ describe('FeatureSubscriptionSwitch', () => {
     });
 
     expect(calls.reads.map((read) => read.refresh)).toEqual([false, true]);
+  });
+
+  it('in Teams, records the choice without a tab or a way back, and says where to subscribe', async () => {
+    const calls: ICalls = newCalls();
+    await render(stubService(NOT_BOUGHT, calls), true, false, false);
+
+    expect(host.textContent).toContain(TEAMS_MESSAGE);
+    expect(host.textContent).not.toContain('Turn on ED Control to subscribe in Microsoft Marketplace.');
+
+    await flip();
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl: undefined }]);
+    expect(toggle()?.checked).toBe(true);
+    expect(host.textContent).toContain('This feature requires an active subscription.');
+    expect(host.textContent).toContain(TEAMS_MESSAGE);
+    expect(subscribeAction()).toBeUndefined();
+  });
+
+  it('offers Subscribe for a feature switched on but not bought, through the same save', async () => {
+    const calls: ICalls = newCalls();
+    await render(stubService(ENABLED_NOT_BOUGHT, calls));
+
+    const subscribe: HTMLElement | undefined = subscribeAction();
+    // Not a plain link to Marketplace: that would be a purchase with no checkout behind it.
+    expect(subscribe?.tagName).toBe('BUTTON');
+
+    await act(async () => {
+      (subscribe as HTMLElement).click();
+    });
+
+    expect(openSpy).toHaveBeenCalledWith('', '_blank');
+    expect(calls.writes).toStrictEqual([{ feature: 'ED_CONTROL', isEnabled: true, returnUrl }]);
+    expect(tab.opener).toBeNull();
+    expect(tab.location.href).toBe(MARKETPLACE_URL);
+  });
+
+  it('closes the tab Subscribe opened when the save is refused', async () => {
+    await render(stubService(ENABLED_NOT_BOUGHT, newCalls(), { failWrites: true }));
+
+    await act(async () => {
+      (subscribeAction() as HTMLElement).click();
+    });
+
+    expect(tab.close).toHaveBeenCalledTimes(1);
+    expect(tab.location.href).toBe('');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Unable to update ED Control.');
+  });
+
+  it('offers no Subscribe to a user who may not change the setting', async () => {
+    await render(stubService(ENABLED_NOT_BOUGHT, newCalls()), false);
+
+    expect(host.textContent).toContain('This feature requires an active subscription.');
+    expect(subscribeAction()).toBeUndefined();
+  });
+
+  it('offers no Subscribe in Teams', async () => {
+    await render(stubService(ENABLED_NOT_BOUGHT, newCalls()), true, false, false);
+
+    expect(subscribeAction()).toBeUndefined();
+    expect(host.textContent).toContain(TEAMS_MESSAGE);
   });
 
   it('reads past the cache when the user arrives back from Marketplace', async () => {

@@ -41,4 +41,10 @@ export interface IXsProjectProps {
    * the pages that gate on it.
    */
   subscriptionService: ISubscriptionService;
+  /**
+   * Whether this host can buy a paid feature through Microsoft Marketplace: false inside
+   * Teams, whose page Marketplace cannot send the buyer back to. Passed on to the
+   * Subscription page.
+   */
+  isPurchaseAvailable: boolean;
 }

@@ -5,7 +5,10 @@ import {
   isFeatureCode,
   isMarketplaceReturn,
   isNavigableUrl,
+  MARKETPLACE_TOKEN_PARAMETER,
   needsMarketplaceCheckout,
+  readMarketplaceToken,
+  toActivatedFeatureSubscription,
   toFeatureSubscription,
   toFeatureSubscriptions,
   toPlanLabel
@@ -110,7 +113,7 @@ describe('toFeatureSubscription', () => {
   });
 
   it('drops blank plan fields', () => {
-    const subscription = toFeatureSubscription({ isActive: true, planId: '  ', planName: null }, 'BIM');
+    const subscription = toFeatureSubscription({ isActive: true, planId: '  ', planName: null }, 'KYP');
 
     expect(subscription?.planId).toBeUndefined();
     expect(subscription?.planName).toBeUndefined();
@@ -135,12 +138,24 @@ describe('toFeatureSubscriptions', () => {
   });
 
   it('reads anything but an array as none', () => {
-    expect(toFeatureSubscriptions({ feature: 'BIM', isActive: true })).toEqual([]);
+    expect(toFeatureSubscriptions({ feature: 'KYP', isActive: true })).toEqual([]);
     expect(toFeatureSubscriptions(undefined)).toEqual([]);
   });
 });
 
 describe('feature codes', () => {
+  it('is exactly the four sold features', () => {
+    expect([...FEATURE_CODES]).toEqual(['ED_CONTROL', 'KYP', 'MINUTES', 'TENDER']);
+    expect(FEATURE_NAMES).toEqual({
+      ED_CONTROL: 'ED Control',
+      KYP: 'KYP',
+      MINUTES: 'Minutes of Meetings',
+      TENDER: 'Tender'
+    });
+    expect(isFeatureCode('BIM')).toBe(false);
+    expect(isFeatureCode('REVIEW')).toBe(false);
+  });
+
   it('names every feature', () => {
     FEATURE_CODES.forEach((code) => expect(FEATURE_NAMES[code]).toBeTruthy());
   });
@@ -201,6 +216,57 @@ describe('isMarketplaceReturn', () => {
     expect(isMarketplaceReturn('?subscription')).toBe(false);
     expect(isMarketplaceReturn('?returned=subscription')).toBe(false);
     expect(isMarketplaceReturn('?subscription=%E0%A4%A')).toBe(false);
+  });
+});
+
+describe('readMarketplaceToken', () => {
+  it('reads the token the landing page adds', () => {
+    expect(MARKETPLACE_TOKEN_PARAMETER).toBe('marketplaceToken');
+    expect(readMarketplaceToken('?subscription=returned&marketplaceToken=abc123')).toBe('abc123');
+    expect(readMarketplaceToken('marketplaceToken=abc123')).toBe('abc123');
+  });
+
+  // Marketplace tokens are base64-like, so a `+` is data, not a space.
+  it('keeps a plus sign and decodes percent escapes', () => {
+    expect(readMarketplaceToken('?marketplaceToken=ab+cd%2Bef%3D%3D')).toBe('ab+cd+ef==');
+  });
+
+  it('answers undefined when there is no usable token', () => {
+    expect(readMarketplaceToken('')).toBeUndefined();
+    expect(readMarketplaceToken('?subscription=returned')).toBeUndefined();
+    expect(readMarketplaceToken('?marketplaceToken=')).toBeUndefined();
+    expect(readMarketplaceToken('?marketplaceToken')).toBeUndefined();
+  });
+
+  it('falls back to the raw value when it is not valid percent-encoding', () => {
+    expect(readMarketplaceToken('?marketplaceToken=%E0%A4%A')).toBe('%E0%A4%A');
+  });
+});
+
+describe('toActivatedFeatureSubscription', () => {
+  it('maps an activation answer, reading the feature from the answer itself', () => {
+    expect(toActivatedFeatureSubscription({ feature: 'KYP', isActive: true, subscriptionStatus: 'Subscribed' })).toEqual({
+      feature: 'KYP',
+      state: 'active',
+      isActive: true,
+      isEnabled: true,
+      subscriptionStatus: 'Subscribed',
+      planId: undefined,
+      planName: undefined
+    });
+  });
+
+  it('accepts the feature in lower case', () => {
+    expect(toActivatedFeatureSubscription({ feature: 'tender', isActive: true })?.feature).toBe('TENDER');
+  });
+
+  it('rejects an unknown or missing feature, and a payload that is not an answer', () => {
+    expect(toActivatedFeatureSubscription({ feature: 'TELEPORT', isActive: true })).toBeUndefined();
+    expect(toActivatedFeatureSubscription({ feature: 'BIM', isActive: true })).toBeUndefined();
+    expect(toActivatedFeatureSubscription({ isActive: true })).toBeUndefined();
+    expect(toActivatedFeatureSubscription(null)).toBeUndefined();
+    expect(toActivatedFeatureSubscription('KYP')).toBeUndefined();
+    expect(toActivatedFeatureSubscription([{ feature: 'KYP' }])).toBeUndefined();
   });
 });
 

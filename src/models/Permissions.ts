@@ -80,14 +80,23 @@ export function canAddEditProject(userRoleId: number | undefined): boolean {
 
 /**
  * True when the role may switch a paid feature (ED Control, …) on or off for the whole
- * tenant - and so be sent to Microsoft Marketplace to buy it.
+ * domain - and so be sent to Microsoft Marketplace to buy it: Admin, SuperAdmin or
+ * ClientAdmin.
  *
- * The same roles as {@link canAddEditProject}, `MaintenanceManager` included for the same
- * reason: it is the role every SPFx user is provisioned with. `SubscriptionController`
- * applies the identical list server-side, which is the check that counts.
+ * Deliberately **not** {@link canAddEditProject}, and so does not grant `MaintenanceManager`
+ * even though that is the role every user joining an existing domain through `SPFxLogin` is
+ * hard-coded to (`AuthenticateController.Add`). Buying commits the whole domain to a charge,
+ * so it stays with administrators. No domain is left without one: when `SPFxLogin`
+ * auto-creates a domain its first user is seeded as Admin (`CustomerService`, `@UserRole=1`),
+ * and on an existing domain an MVC administrator promotes users. `Client` (the McD manager)
+ * is excluded too. Everyone else sees the status read-only and is told to ask an
+ * administrator. `SubscriptionController` applies the same list server-side, which is the
+ * check that counts.
  */
 export function canManageFeatureSubscriptions(userRoleId: number | undefined): boolean {
-  return canAddEditProject(userRoleId);
+  return userRoleId === UserRole.Admin
+    || userRoleId === UserRole.SuperAdmin
+    || userRoleId === UserRole.ClientAdmin;
 }
 
 /**

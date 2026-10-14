@@ -111,8 +111,9 @@ const SUBSCRIPTION_NOT_CONFIGURED: ISubscriptionLinks = {
  * these into a deployed environment.
  */
 const SUBSCRIPTION_DEMO: ISubscriptionLinks = {
-  marketplaceOfferUrl: 'https://marketplace.microsoft.com/',
-  manageSubscriptionUrl: 'https://portal.azure.com/'
+  //marketplaceOfferUrl: 'https://marketplace.microsoft.com/',
+  marketplaceOfferUrl: 'https://marketplace.microsoft.com/en-us/product/saas/ifourtechnolabprivatelimited1715753920355.ifourtechnolab_tablab-preview?tab=Overview&flightCodes=97216b75-bca3-4444-94c9-b387969aee7c',
+  manageSubscriptionUrl: 'https://admin.microsoft.com/Adminportal/Home#/subscriptions'
 };
 
 /** Requests are abandoned after this many milliseconds. Use `0` to disable. */

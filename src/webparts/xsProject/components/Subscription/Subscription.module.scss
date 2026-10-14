@@ -1,0 +1,57 @@
+.subscription {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+}
+
+.title {
+  margin: 0 0 0.75em;
+}
+
+.status,
+.success,
+.failure,
+.note {
+  margin: 0 0 0.75em;
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5em 0.75em;
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+}
+
+.success {
+  color: "[theme:greenDark, default: #0b6a0b]";
+}
+
+.failure {
+  color: "[theme:errorText, default: #a4262c]";
+}
+
+.note {
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  border: 1px solid "[theme:neutralLight, default: #edebe9]";
+}
+
+.featureName {
+  margin: 0 0 0.75em;
+}

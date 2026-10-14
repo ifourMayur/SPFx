@@ -164,7 +164,7 @@ describe('SubscriptionService.getFeatureSubscription', () => {
   // to verify, never "active" and never "inactive".
   it('fails on a refusal inside an HTTP 200', async () => {
     const error: unknown = await rejection(
-      build(() => ({ body: envelope(null, false, 'Subscription lookup failed.') }), []).getFeatureSubscription('BIM')
+      build(() => ({ body: envelope(null, false, 'Subscription lookup failed.') }), []).getFeatureSubscription('KYP')
     );
 
     expect((error as ApiError).message).toBe('Subscription lookup failed.');
@@ -172,7 +172,7 @@ describe('SubscriptionService.getFeatureSubscription', () => {
 
   it('fails when a successful envelope carries no subscription', async () => {
     const error: unknown = await rejection(
-      build(() => ({ body: envelope(null) }), []).getFeatureSubscription('BIM')
+      build(() => ({ body: envelope(null) }), []).getFeatureSubscription('KYP')
     );
 
     expect(error).toBeInstanceOf(ApiError);
@@ -180,7 +180,7 @@ describe('SubscriptionService.getFeatureSubscription', () => {
 
   it('fails on a failed status', async () => {
     const error: unknown = await rejection(
-      build(() => ({ body: 'Unauthorized', status: 401 }), []).getFeatureSubscription('BIM')
+      build(() => ({ body: 'Unauthorized', status: 401 }), []).getFeatureSubscription('KYP')
     );
 
     expect((error as ApiError).status).toBe(401);
@@ -310,6 +310,103 @@ describe('SubscriptionService.setFeatureEnabled', () => {
   it('fails when the API answers about a different feature', async () => {
     const error: unknown = await rejection(
       build(() => ({ body: SWITCHED_ON_UNPAID }), []).setFeatureEnabled('MINUTES', true)
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+  });
+});
+
+describe('SubscriptionService.setFeatureEnabled - return URL', () => {
+  const ANSWER: unknown = envelope({ feature: 'ED_CONTROL', isActive: false, isEnabled: true, subscriptionStatus: 'Inactive' });
+  const RETURN_URL: string = 'https://contoso.sharepoint.com/sites/xs/SitePages/App.aspx?debug=true';
+
+  it('posts the return URL when switching on', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(() => ({ body: ANSWER }), requests).setFeatureEnabled('ED_CONTROL', true, RETURN_URL);
+
+    expect(JSON.parse(requests[0].options.body as string)).toEqual({ returnUrl: RETURN_URL });
+  });
+
+  it('posts an empty object, not an undefined property, without a return URL', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(() => ({ body: ANSWER }), requests).setFeatureEnabled('ED_CONTROL', true);
+
+    expect(requests[0].options.body).toBe('{}');
+  });
+
+  it('does not send the return URL when switching off', async () => {
+    const requests: IRecordedRequest[] = [];
+    await build(() => ({ body: ANSWER }), requests).setFeatureEnabled('ED_CONTROL', false, RETURN_URL);
+
+    expect(requests[0].options.body).toBe('{}');
+  });
+});
+
+describe('SubscriptionService.activateMarketplacePurchase', () => {
+  const TOKEN: string = 'abc+def/ghi==';
+  const ACTIVATED: unknown = envelope({
+    feature: 'KYP',
+    isActive: true,
+    isEnabled: true,
+    subscriptionStatus: 'Subscribed',
+    planId: 'kyp-plan',
+    planName: 'KYP'
+  });
+
+  it('posts the token in the body to marketplace/activate, never in the URL', async () => {
+    const requests: IRecordedRequest[] = [];
+    const subscription: IFeatureSubscription = await build(() => ({ body: ACTIVATED }), requests)
+      .activateMarketplacePurchase(TOKEN);
+
+    expect(requests[0].url).toBe('https://api.example.com/api/Subscription/marketplace/activate');
+    expect(requests[0].url).not.toContain('abc');
+    expect(requests[0].options.method).toBe('POST');
+    expect(JSON.parse(requests[0].options.body as string)).toEqual({ token: TOKEN });
+    expect(subscription.feature).toBe('KYP');
+    expect(subscription.isActive).toBe(true);
+  });
+
+  it('seeds the cache for the activated feature, so a read asks nothing', async () => {
+    const requests: IRecordedRequest[] = [];
+    const service: SubscriptionService = build(() => ({ body: ACTIVATED }), requests);
+
+    await service.activateMarketplacePurchase(TOKEN);
+    const read: IFeatureSubscription = await service.getFeatureSubscription('KYP');
+
+    expect(read.isActive).toBe(true);
+    expect(requests.length).toBe(1);
+  });
+
+  it('fails on a refusal inside an HTTP 200, and caches nothing', async () => {
+    const requests: IRecordedRequest[] = [];
+    const service: SubscriptionService = build(
+      (url: string) => (
+        url.indexOf('/marketplace/activate') > -1
+          ? { body: envelope(null, false, 'This purchase belongs to another account.') }
+          : { body: envelope({ feature: 'KYP', isActive: false, subscriptionStatus: 'Inactive' }) }
+      ),
+      requests
+    );
+
+    const error: unknown = await rejection(service.activateMarketplacePurchase(TOKEN));
+    expect((error as ApiError).message).toBe('This purchase belongs to another account.');
+
+    expect((await service.getFeatureSubscription('KYP')).isActive).toBe(false);
+    expect(requests.length).toBe(2);
+  });
+
+  it('fails when the answer names an unknown feature', async () => {
+    const error: unknown = await rejection(
+      build(() => ({ body: envelope({ feature: 'BIM', isActive: true }) }), []).activateMarketplacePurchase(TOKEN)
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(200);
+  });
+
+  it('fails when the answer carries no subscription', async () => {
+    const error: unknown = await rejection(
+      build(() => ({ body: envelope(null) }), []).activateMarketplacePurchase(TOKEN)
     );
 
     expect(error).toBeInstanceOf(ApiError);

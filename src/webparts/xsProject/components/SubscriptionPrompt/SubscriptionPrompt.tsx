@@ -9,16 +9,19 @@ import { isNavigableUrl } from '../../../../models/FeatureSubscription';
  * that can change that.
  *
  * Purely presentational. It never decides whether the feature is active - it is only
- * rendered once `FeatureSubscriptionGuard` has an answer that says it is not - and nothing
- * it does can make it active: Subscribe is a link to Microsoft Marketplace, where the plan
- * is chosen and paid for, and "Check again" asks the Web API.
+ * rendered once its owner has an answer that says it is not - and nothing it does can make
+ * it active: Subscribe hands the purchase to its owner, where the plan is then chosen and
+ * paid for in Microsoft Marketplace, and "Check again" asks the Web API.
  *
- * Subscribe opens Marketplace in a **new tab** rather than navigating this one. Inside a
- * Teams tab the web part is framed, and Marketplace refuses to be framed; and on a
- * SharePoint page, leaving would throw away the sign-in and the chosen site. Keeping
- * XSProject open makes "returning" a matter of switching back, which the guard notices.
- * It is a real link, so the browser handles it as one - never popup-blocked, and openable
- * however the user prefers.
+ * Subscribe is a **button, not a link to Marketplace**. A purchase can only be activated
+ * when the Web API recorded a checkout before it - that is how the landing page finds its
+ * way back to this tenant - so `onSubscribe` saves first and opens Marketplace after (see
+ * `FeatureSubscriptionSwitch`). Without `onSubscribe` there is no Subscribe at all.
+ *
+ * Manage subscription is still a real link in a **new tab**: there is nothing to record
+ * before it, and on a SharePoint page leaving would throw away the sign-in and the chosen
+ * site. Keeping XSProject open makes "returning" a matter of switching back, which the
+ * owner notices.
  */
 export default class SubscriptionPrompt extends React.Component<ISubscriptionPromptProps> {
   public render(): React.ReactElement<ISubscriptionPromptProps> {
@@ -99,21 +102,14 @@ export default class SubscriptionPrompt extends React.Component<ISubscriptionPro
   }
 
   private _renderActions(): React.ReactNode[] {
-    const { state, isAwaitingMarketplace, links } = this.props;
+    const { state, isAwaitingMarketplace, links, onSubscribe } = this.props;
     const actions: React.ReactNode[] = [];
 
-    if (state === 'inactive' && isNavigableUrl(links.marketplaceOfferUrl)) {
+    if (state === 'inactive' && onSubscribe && isNavigableUrl(links.marketplaceOfferUrl)) {
       actions.push(
-        <a
-          key="subscribe"
-          className={styles.primary}
-          href={links.marketplaceOfferUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={this.props.onSubscribe}
-        >
+        <button key="subscribe" type="button" className={styles.primary} onClick={onSubscribe}>
           Subscribe
-        </a>
+        </button>
       );
     }
 
@@ -125,7 +121,7 @@ export default class SubscriptionPrompt extends React.Component<ISubscriptionPro
           href={links.manageSubscriptionUrl}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={this.props.onSubscribe}
+          onClick={this.props.onManage}
         >
           Manage subscription
         </a>

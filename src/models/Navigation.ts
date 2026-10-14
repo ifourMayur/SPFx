@@ -25,7 +25,7 @@ export const ROUTE_PATHS = {
   projectDocument: '/document',
   search: '/search',
   suppliers: '/suppliers',
-  edControl: '/ed-control'
+  subscription: '/subscription'
 } as const;
 
 /** A path this app routes. */

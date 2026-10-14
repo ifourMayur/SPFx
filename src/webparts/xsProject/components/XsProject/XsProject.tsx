@@ -64,7 +64,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       lookupService,
       loginService,
       sharePointSiteService,
-      subscriptionService
+      subscriptionService,
+      isPurchaseAvailable
     } = this.props;
     const {
       isAuthenticated,
@@ -113,6 +114,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
               canManageFeatures={canManageFeatureSubscriptions(userRoleId)}
+              isPurchaseAvailable={isPurchaseAvailable}
               domainGroup={login?.domainGroup}
               notification={notification}
               siteTitle={selectedSite.title}

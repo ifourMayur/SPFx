@@ -63,7 +63,11 @@ export default class XsProjectWebPart extends BaseClientSideWebPart<IXsProjectWe
         lookupService: services.lookupService,
         loginService: services.loginService,
         sharePointSiteService: services.sharePointSiteService,
-        subscriptionService: services.subscriptionService
+        subscriptionService: services.subscriptionService,
+        // Marketplace sends a buyer back to this page's URL, which inside Teams (or Outlook,
+        // or office.com) is a hosted page that only works there - so buying is offered in
+        // SharePoint alone.
+        isPurchaseAvailable: !this.context.sdks.microsoftTeams
       }
     );
 

@@ -9,9 +9,14 @@ import ProjectAddEditRoute from '../ProjectAddEdit/ProjectAddEditRoute';
 import Document from '../Document/Document';
 import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
-import EdControl from '../EdControl/EdControl';
+import Subscription from '../Subscription/Subscription';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
-import { isMarketplaceReturn } from '../../../../models/FeatureSubscription';
+import {
+  SUBSCRIPTION_RETURN_PARAMETER,
+  SUBSCRIPTION_RETURN_VALUE,
+  isMarketplaceReturn,
+  readMarketplaceToken
+} from '../../../../models/FeatureSubscription';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
@@ -24,7 +29,7 @@ export interface IAppShellProps {
   /** The paged read behind the overview table, handed straight to `ProjectList`. */
   projectListingService: IProjectListingService;
   lookupService: ILookupService;
-  /** Which paid features the tenant has bought; gates the ED Control page. */
+  /** Which paid features the tenant has bought; behind the Subscription page. */
   subscriptionService: ISubscriptionService;
   /**
    * Names of the projects seen on the listing this session, keyed by id.
@@ -44,6 +49,11 @@ export interface IAppShellProps {
   canOpenForm: boolean;
   /** Whether this user may switch paid features on or off, from `canManageFeatureSubscriptions`. */
   canManageFeatures: boolean;
+  /**
+   * Whether this host can buy a paid feature: false inside Teams, which Marketplace cannot
+   * send the buyer back to. Handed on to the Subscription page.
+   */
+  isPurchaseAvailable: boolean;
   /** `ILoginResponse.domainGroup`, which decides how the listing's cells are coloured. */
   domainGroup?: number;
   /** Save confirmation, shown by `ProjectList` as a toast. */
@@ -86,6 +96,12 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
 
   const goToAdd = React.useCallback((): void => {
     navigate(ROUTE_PATHS.projectAdd);
+  }, [navigate]);
+
+  // The purchase token has been handed to the API: replaced rather than pushed, so the spent
+  // token leaves the URL and history alike, while `?subscription=returned` stays.
+  const onTokenConsumed = React.useCallback((): void => {
+    navigate(`${ROUTE_PATHS.subscription}?${SUBSCRIPTION_RETURN_PARAMETER}=${SUBSCRIPTION_RETURN_VALUE}`, { replace: true });
   }, [navigate]);
 
   const goToEdit = React.useCallback(
@@ -149,15 +165,19 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
           <Route path={ROUTE_PATHS.projectDocument} element={<Document />} />
           <Route path={ROUTE_PATHS.search} element={<Search />} />
           <Route path={ROUTE_PATHS.suppliers} element={<Suppliers />} />
-          {/* The query string sits inside the fragment, `#/ed-control?subscription=returned`,
-              which is where the Marketplace landing page sends the user back to. */}
+          {/* The query string sits inside the fragment,
+              `#/subscription?subscription=returned&marketplaceToken=…`, which is where the
+              Marketplace landing page sends the buyer back to. */}
           <Route
-            path={ROUTE_PATHS.edControl}
+            path={ROUTE_PATHS.subscription}
             element={
-              <EdControl
+              <Subscription
                 subscriptionService={props.subscriptionService}
                 canManage={props.canManageFeatures}
+                isPurchaseAvailable={props.isPurchaseAvailable}
+                marketplaceToken={readMarketplaceToken(location.search)}
                 isReturningFromMarketplace={isMarketplaceReturn(location.search)}
+                onTokenConsumed={onTokenConsumed}
               />
             }
           />

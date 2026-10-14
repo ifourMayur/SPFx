@@ -1,4 +1,4 @@
-import { UserRole, canAddEditProject, canOpenProjectForm } from './Permissions';
+import { UserRole, canAddEditProject, canManageFeatureSubscriptions, canOpenProjectForm } from './Permissions';
 
 /**
  * Mirrors `BuildingController.Index` (lines 112-140), which is the only place the
@@ -81,5 +81,46 @@ describe('canOpenProjectForm', () => {
 
   it('denies a caller whose role is not known yet', () => {
     expect(canOpenProjectForm(undefined)).toBe(false);
+  });
+});
+
+/**
+ * Buying commits the domain to a charge, so unlike `canAddEditProject` this does not grant
+ * the MaintenanceManager role every SPFx-provisioned user inherits.
+ */
+describe('canManageFeatureSubscriptions', () => {
+  it.each([
+    [UserRole.Admin, true],
+    [UserRole.SuperAdmin, true],
+    [UserRole.Client, false],
+    [UserRole.MaintenanceManager, false],
+    [UserRole.ClientAdmin, true],
+    [UserRole.Agent, false],
+    [UserRole.Consultant, false],
+    [UserRole.Franchisenemer, false],
+    [UserRole.Office, false],
+    [UserRole.McDOffice, false]
+  ])('for role %p answers %p', (role: UserRole, allowed: boolean) => {
+    expect(canManageFeatureSubscriptions(role)).toBe(allowed);
+  });
+
+  it('covers every role value 1 to 10', () => {
+    const allowed: number[] = [];
+
+    for (let role: number = 1; role <= 10; role++) {
+      if (canManageFeatureSubscriptions(role)) {
+        allowed.push(role);
+      }
+    }
+
+    expect(allowed).toEqual([1, 2, 5]);
+  });
+
+  it('denies a role it does not recognise', () => {
+    expect(canManageFeatureSubscriptions(9999)).toBe(false);
+  });
+
+  it('denies a caller whose role is not known yet', () => {
+    expect(canManageFeatureSubscriptions(undefined)).toBe(false);
   });
 });

@@ -13,8 +13,15 @@ export interface ISubscriptionPromptProps {
   links: ISubscriptionLinks;
   /** The user has been to Marketplace from here, or has just come back from it. */
   isAwaitingMarketplace: boolean;
-  /** The user followed the Subscribe link; the navigation itself is the link's own. */
-  onSubscribe: () => void;
+  /**
+   * Starts the purchase: the owner records a checkout with the Web API and only then sends
+   * a tab to Marketplace (see `FeatureSubscriptionSwitch`). Subscribe is offered only when
+   * this is given - leave it out where the user may not buy (`canManage`) or this host
+   * cannot (Teams), or where nothing can record the checkout first.
+   */
+  onSubscribe?: () => void;
+  /** The user followed Manage subscription; the navigation itself is the link's own. */
+  onManage: () => void;
   /** Asks the API again, bypassing the cache - "Check again" and "Try again". */
   onCheckAgain: () => void;
 }

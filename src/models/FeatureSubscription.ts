@@ -5,10 +5,11 @@
  * Paid features, and whether the signed-in tenant may use them.
  *
  * Microsoft Marketplace is the payment provider and the XSProject Web API is the source of
- * truth: Marketplace tells the API's SaaS fulfilment side that a tenant subscribed, the API
- * stores it against that tenant, and this client only ever *reads* the result. Nothing
- * here can make a feature active - there is no setter, no flag kept in storage, and no
- * reading of the Marketplace return URL as proof of purchase. A UI gate is a convenience,
+ * truth: the API verifies a purchase with Microsoft and stores it against that tenant, and
+ * this client only ever *reads* the result. The client does forward the one-time Marketplace
+ * token the API's landing page hands back, but only so the API can verify it; it never
+ * decides activation. Nothing here can make a feature active - there is no setter, no flag
+ * kept in storage, and no reading of the Marketplace return URL as proof of purchase. A UI gate is a convenience,
  * never a security boundary: the API endpoints behind a paid feature must check the
  * subscription themselves.
  *
@@ -21,7 +22,7 @@
  * Adding a paid feature is one entry here and one in {@link FEATURE_NAMES}; the service,
  * the cache and `FeatureSubscriptionGuard` are all keyed on the code and need no change.
  */
-export const FEATURE_CODES = ['ED_CONTROL', 'MINUTES', 'BIM', 'TENDER', 'REVIEW'] as const;
+export const FEATURE_CODES = ['ED_CONTROL', 'KYP', 'MINUTES', 'TENDER'] as const;
 
 /** A feature that can be sold separately. */
 export type FeatureCode = (typeof FEATURE_CODES)[number];
@@ -29,10 +30,9 @@ export type FeatureCode = (typeof FEATURE_CODES)[number];
 /** The name a feature is shown under. */
 export const FEATURE_NAMES: { readonly [code in FeatureCode]: string } = {
   ED_CONTROL: 'ED Control',
-  MINUTES: 'Minutes',
-  BIM: 'BIM',
-  TENDER: 'Tender',
-  REVIEW: 'Review'
+  KYP: 'KYP',
+  MINUTES: 'Minutes of Meetings',
+  TENDER: 'Tender'
 };
 
 /** True when `value` is one of {@link FEATURE_CODES}, compared exactly. */
@@ -169,6 +169,28 @@ export function toFeatureSubscription(
 }
 
 /**
+ * Maps the answer to `POST api/Subscription/marketplace/activate`, which - unlike the
+ * per-feature reads - is not addressed to a feature: the purchase decides which one it
+ * unlocked, so the feature is read from the answer itself.
+ *
+ * The answer must name a feature this build knows (any case); otherwise it is rejected
+ * rather than guessed at. Everything else is {@link toFeatureSubscription}'s rules, so only
+ * an explicit `isActive: true` makes the feature usable.
+ *
+ * @returns the subscription, or `undefined` when `response` is not an answer about a known
+ *   feature - a failure to verify, never "inactive".
+ */
+export function toActivatedFeatureSubscription(response: unknown): IFeatureSubscription | undefined {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    return undefined;
+  }
+
+  const code: string = String((response as IFeatureSubscriptionResponse).feature || '').toUpperCase();
+
+  return isFeatureCode(code) ? toFeatureSubscription(response, code) : undefined;
+}
+
+/**
  * Maps every entry of `GET api/Subscription/features` the client recognises.
  *
  * An entry for a feature this build does not know is dropped rather than kept under a
@@ -233,7 +255,7 @@ export function toPlanLabel(subscription: IFeatureSubscription): string | undefi
 
 /**
  * The query parameter the Marketplace landing page adds when it sends the user back, e.g.
- * `…/XSProject.aspx#/ed-control?subscription=returned`.
+ * `…/XSProject.aspx#/subscription?subscription=returned`.
  *
  * It only changes what the UI *says* - "being processed" rather than "subscribe" while the
  * API catches up - and makes the guard skip its cache. It never makes a feature active:
@@ -260,6 +282,46 @@ export function isMarketplaceReturn(search: string): boolean {
     return safeDecode(name) === SUBSCRIPTION_RETURN_PARAMETER
       && safeDecode(value).toLowerCase() === SUBSCRIPTION_RETURN_VALUE;
   });
+}
+
+/**
+ * The query parameter the Marketplace landing page puts the one-time purchase token in,
+ * e.g. `#/subscription?subscription=returned&marketplaceToken=…`.
+ */
+export const MARKETPLACE_TOKEN_PARAMETER: string = 'marketplaceToken';
+
+/**
+ * The Marketplace token in a location's query string, for the API to verify.
+ *
+ * Decoded with `decodeURIComponent` only: Marketplace tokens are base64-like, so a literal
+ * `+` is data and must not become a space the way a form-encoded query would have it. A
+ * value that is not valid percent-encoding is returned as it came.
+ *
+ * @param search - `location.search` of the routed location, with or without the `?`.
+ * @returns the token, or `undefined` when absent or empty. Never log it.
+ */
+export function readMarketplaceToken(search: string): string | undefined {
+  const query: string = (search || '').replace(/^\?/, '');
+
+  for (const pair of query.split('&')) {
+    const separator: number = pair.indexOf('=');
+    const name: string = separator > -1 ? pair.substring(0, separator) : pair;
+
+    if (safeDecode(name) === MARKETPLACE_TOKEN_PARAMETER) {
+      const value: string = separator > -1 ? pair.substring(separator + 1) : '';
+      let token: string;
+
+      try {
+        token = decodeURIComponent(value);
+      } catch {
+        token = value;
+      }
+
+      return token || undefined;
+    }
+  }
+
+  return undefined;
 }
 
 function safeDecode(value: string): string {

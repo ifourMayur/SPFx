@@ -5,6 +5,7 @@ import {
   FeatureCode,
   IFeatureSubscription,
   ISubscriptionLinks,
+  toActivatedFeatureSubscription,
   toFeatureSubscription,
   toFeatureSubscriptions
 } from '../models/FeatureSubscription';
@@ -24,11 +25,13 @@ export interface IFeatureSubscriptionRequestOptions {
 /**
  * Which paid features the signed-in tenant has bought through Microsoft Marketplace.
  *
- * Read-only by design. Payment, plan selection and activation all happen between
- * Marketplace and the Web API's SaaS fulfilment side; this client asks the API what it
- * concluded and nothing else. The tenant is never sent: the API derives it from the
- * application JWT `ApiService` attaches to every call, so the browser cannot ask about -
- * or claim - another tenant's subscription.
+ * The API is the source of truth. Payment and plan selection happen in Marketplace, and
+ * the API verifies the purchase with Microsoft; this client asks what the API concluded,
+ * switches a feature on or off, and hands the API the one-time purchase token Marketplace
+ * returned the buyer with, which the API verifies itself - the client never claims a
+ * feature is active. The tenant is never sent: the API derives it from the application JWT
+ * `ApiService` attaches to every call, so the browser cannot ask about - or claim -
+ * another tenant's subscription.
  */
 export interface ISubscriptionService {
   /** Where Subscribe and Manage subscription lead in this environment. */
@@ -67,10 +70,25 @@ export interface ISubscriptionService {
    * paid for. An unpaid feature comes back still locked, with `needsMarketplaceCheckout`
    * true, until Microsoft Marketplace reports the purchase to the API.
    *
+   * @param returnUrl - sent on switch-on only: the page Marketplace should send the buyer
+   *   back to. The API validates it; omitted, the body is `{}`.
    * @throws ApiError - when the call fails or is refused (e.g. a role not allowed to
    *   change features), and when the API answers about a different feature.
    */
-  setFeatureEnabled(feature: FeatureCode, isEnabled: boolean): Promise<IFeatureSubscription>;
+  setFeatureEnabled(feature: FeatureCode, isEnabled: boolean, returnUrl?: string): Promise<IFeatureSubscription>;
+
+  /**
+   * Hands the API the purchase token Marketplace returned the buyer with -
+   * `POST api/Subscription/marketplace/activate`. The API verifies it with Microsoft and
+   * answers with the activated feature's subscription, which also replaces that feature's
+   * cached answer.
+   *
+   * The token travels in the body only - never in the URL, never logged.
+   *
+   * @throws ApiError - when the call fails or is refused, and when the API answers without
+   *   a subscription for a feature this build knows.
+   */
+  activateMarketplacePurchase(token: string): Promise<IFeatureSubscription>;
 }
 
 /** Source name used for SPFx log entries emitted by this service. */
@@ -85,6 +103,9 @@ const FEATURES_ACTION: string = 'features';
 /** The actions below one feature that switch it on and off. */
 const ENABLE_ACTION: string = 'enable';
 const DISABLE_ACTION: string = 'disable';
+
+/** The action that turns a Marketplace purchase token into an active subscription. */
+const ACTIVATE_ACTION: string = 'marketplace/activate';
 
 /** Default {@link ISubscriptionService}, built on `BaseApiService`. */
 export class SubscriptionService extends BaseApiService implements ISubscriptionService {
@@ -149,16 +170,24 @@ export class SubscriptionService extends BaseApiService implements ISubscription
     return request;
   }
 
-  public async setFeatureEnabled(feature: FeatureCode, isEnabled: boolean): Promise<IFeatureSubscription> {
+  public async setFeatureEnabled(
+    feature: FeatureCode,
+    isEnabled: boolean,
+    returnUrl?: string
+  ): Promise<IFeatureSubscription> {
     const relativeUrl: string = this.route(
       this._endpoint,
       `${FEATURES_ACTION}/${encodeURIComponent(feature)}/${isEnabled ? ENABLE_ACTION : DISABLE_ACTION}`
     );
 
     try {
-      const payload: unknown = await this.postData<unknown, Record<string, never>>(relativeUrl, {}, {
-        operation: `the ${feature} setting`
-      });
+      const payload: unknown = await this.postData<unknown, { returnUrl?: string }>(
+        relativeUrl,
+        isEnabled && returnUrl ? { returnUrl } : {},
+        {
+          operation: `the ${feature} setting`
+        }
+      );
       const subscription: IFeatureSubscription | undefined = toFeatureSubscription(payload, feature);
 
       if (!subscription) {
@@ -172,6 +201,31 @@ export class SubscriptionService extends BaseApiService implements ISubscription
       return subscription;
     } catch (error) {
       this.logFailure(error, `Could not switch ${feature} ${isEnabled ? 'on' : 'off'}.`);
+      throw error;
+    }
+  }
+
+  public async activateMarketplacePurchase(token: string): Promise<IFeatureSubscription> {
+    const relativeUrl: string = this.route(this._endpoint, ACTIVATE_ACTION);
+
+    try {
+      // No `print`: the request body carries the purchase token.
+      const payload: unknown = await this.postData<unknown, { token: string }>(relativeUrl, { token }, {
+        operation: 'the Marketplace purchase'
+      });
+      const subscription: IFeatureSubscription | undefined = toActivatedFeatureSubscription(payload);
+
+      if (!subscription) {
+        throw this.refusal('The API did not report the activated subscription.', relativeUrl);
+      }
+
+      // Seeded, not merely cleared: an in-flight read could otherwise cache the stale answer.
+      this._cache[subscription.feature] = Promise.resolve(subscription);
+      Log.info(LOG_SOURCE, `${subscription.feature} activated: ${subscription.state}, usable: ${subscription.isActive}.`);
+
+      return subscription;
+    } catch (error) {
+      this.logFailure(error, 'Could not activate the Marketplace purchase.');
       throw error;
     }
   }

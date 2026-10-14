@@ -2,8 +2,10 @@
  * Behaviour tests for `FeatureSubscriptionGuard`: the real component tree - the guard,
  * `SubscriptionPrompt` and `SubscriptionStatus` - over a stubbed `ISubscriptionService`.
  *
- * What they pin down is that only the service's answer opens the gate: not a click on
- * Subscribe, not a return from Marketplace, and not another feature's subscription.
+ * What they pin down is that only the service's answer opens the gate: not a trip to
+ * Marketplace, not a return from it, and not another feature's subscription. And the guard
+ * sells nothing itself: buying goes through `FeatureSubscriptionSwitch`, which records a
+ * checkout first.
  *
  * Every `ReactDOM.render` here is unmounted in `afterEach`.
  */
@@ -72,6 +74,9 @@ function stubService(
     },
     setFeatureEnabled: async (): Promise<IFeatureSubscription> => {
       throw new Error('The guard never switches a feature.');
+    },
+    activateMarketplacePurchase: async (): Promise<IFeatureSubscription> => {
+      throw new Error('The guard never activates a purchase.');
     }
   };
 }
@@ -115,10 +120,15 @@ describe('FeatureSubscriptionGuard', () => {
     );
   }
 
-  function subscribeLink(): HTMLAnchorElement | null {
+  /** Subscribe in any form, link or button. */
+  function subscribeLink(): HTMLElement | null {
     return Array.prototype.slice
-      .call(host.querySelectorAll('a'))
-      .filter((link: HTMLAnchorElement) => link.textContent === 'Subscribe')[0] || null;
+      .call(host.querySelectorAll('a, button'))
+      .filter((element: HTMLElement) => element.textContent === 'Subscribe')[0] || null;
+  }
+
+  function manageLink(): HTMLAnchorElement {
+    return host.querySelector('a[href="' + MANAGE_URL + '"]') as HTMLAnchorElement;
   }
 
   function button(text: string): HTMLButtonElement | undefined {
@@ -155,27 +165,26 @@ describe('FeatureSubscriptionGuard', () => {
     );
   });
 
-  it('locks the feature and offers Subscribe when the API reports it inactive', async () => {
+  // A Marketplace link here would be a purchase with no checkout behind it, which the API
+  // could not link to this tenant; buying goes through the switch, which records one first.
+  it('locks the feature when the API reports it inactive, without selling it itself', async () => {
     await render(stubService(() => subscription('ED_CONTROL', 'inactive'), []));
 
     expect(host.querySelector('#feature-content')).toBeNull();
     expect(host.textContent).toContain('This feature requires an active subscription.');
-
-    const link: HTMLAnchorElement | null = subscribeLink();
-    expect(link?.href).toBe(MARKETPLACE_URL);
-    expect(link?.target).toBe('_blank');
-    expect(link?.rel).toBe('noopener noreferrer');
+    expect(subscribeLink()).toBeNull();
+    expect(host.querySelector('a[href="' + MARKETPLACE_URL + '"]')).toBeNull();
   });
 
-  it('treats Subscribe as a trip to Marketplace, not as a purchase', async () => {
+  it('treats Manage subscription as a trip to Marketplace, not as a change', async () => {
     const calls: ICall[] = [];
-    await render(stubService(() => subscription('ED_CONTROL', 'inactive'), calls));
+    await render(stubService(() => subscription('ED_CONTROL', 'suspended'), calls));
 
-    await click(subscribeLink() as HTMLAnchorElement);
+    await click(manageLink());
 
-    // Still locked: clicking is not paying.
+    // Still locked: following a link changes nothing.
     expect(host.querySelector('#feature-content')).toBeNull();
-    expect(host.textContent).toContain('your subscription is being processed');
+    expect(host.textContent).toContain('subscription is suspended');
     expect(button('Check again')).toBeDefined();
     expect(calls).toEqual([{ feature: 'ED_CONTROL', refresh: false }]);
   });
@@ -184,12 +193,12 @@ describe('FeatureSubscriptionGuard', () => {
     const calls: ICall[] = [];
     await render(
       stubService(
-        (feature: FeatureCode, call: number) => subscription(feature, call === 1 ? 'inactive' : 'active'),
+        (feature: FeatureCode, call: number) => subscription(feature, call === 1 ? 'suspended' : 'active'),
         calls
       )
     );
 
-    await click(subscribeLink() as HTMLAnchorElement);
+    await click(manageLink());
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
@@ -315,7 +324,7 @@ describe('FeatureSubscriptionGuard', () => {
 
     expect(host.querySelector('#ed-control')).not.toBeNull();
     expect(host.querySelector('#minutes')).toBeNull();
-    expect(subscribeLink()).not.toBeNull();
+    expect(host.querySelector('[data-subscription-state="inactive"]')).not.toBeNull();
     expect(calls.map((call: ICall) => call.feature).sort()).toEqual(['ED_CONTROL', 'MINUTES']);
   });
 

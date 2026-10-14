@@ -23,11 +23,11 @@ const MENU_ITEMS: IMenuItem[] = [
       { key: 'projectDocument', label: 'Document', path: ROUTE_PATHS.projectDocument }
     ]
   },
-  // Listed whether or not the tenant has bought it: the page itself is where an
-  // unsubscribed user finds out, and subscribes.
-  { key: 'edControl', label: 'ED Control', path: ROUTE_PATHS.edControl },
   { key: 'search', label: 'Search', path: ROUTE_PATHS.search },
-  { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers }
+  { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers },
+  // Listed to every user, not only those who may buy: the page is also where everyone
+  // else sees which paid features the organisation has, and who to ask for the rest.
+  { key: 'subscription', label: 'Subscription', path: ROUTE_PATHS.subscription }
 ];
 
 /**

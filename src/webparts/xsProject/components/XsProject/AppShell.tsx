@@ -11,12 +11,7 @@ import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
 import Subscription from '../Subscription/Subscription';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
-import {
-  SUBSCRIPTION_RETURN_PARAMETER,
-  SUBSCRIPTION_RETURN_VALUE,
-  isMarketplaceReturn,
-  readMarketplaceToken
-} from '../../../../models/FeatureSubscription';
+import { isMarketplaceReturn, readMarketplaceToken } from '../../../../models/FeatureSubscription';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
@@ -98,10 +93,12 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
     navigate(ROUTE_PATHS.projectAdd);
   }, [navigate]);
 
-  // The purchase token has been handed to the API: replaced rather than pushed, so the spent
-  // token leaves the URL and history alike, while `?subscription=returned` stays.
+  // The purchase token has been dealt with: replaced rather than pushed, so it leaves the URL
+  // and history alike. `?subscription=returned` goes with it - the API has answered, so there
+  // is no purchase left to wait for, and keeping it would leave every unbought feature saying
+  // "if you have just subscribed" and re-reading on every tab switch.
   const onTokenConsumed = React.useCallback((): void => {
-    navigate(`${ROUTE_PATHS.subscription}?${SUBSCRIPTION_RETURN_PARAMETER}=${SUBSCRIPTION_RETURN_VALUE}`, { replace: true });
+    navigate(ROUTE_PATHS.subscription, { replace: true });
   }, [navigate]);
 
   const goToEdit = React.useCallback(

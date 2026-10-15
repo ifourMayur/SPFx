@@ -269,6 +269,9 @@ function flakySiteService(): ISharePointSiteService {
 /** Every purchase token the stubbed subscription service was handed, in order. */
 const activatedTokens: string[] = [];
 
+/** Every per-feature read the stubbed subscription service answered, in order. */
+const subscriptionReads: { feature: FeatureCode; refresh: boolean }[] = [];
+
 /** ED Control bought, everything else not - and no Marketplace links configured. */
 function stubSubscriptionService(): ISubscriptionService {
   const subscription = (feature: FeatureCode): IFeatureSubscription => ({
@@ -283,7 +286,13 @@ function stubSubscriptionService(): ISubscriptionService {
   return {
     links: { marketplaceOfferUrl: '', manageSubscriptionUrl: '' },
     getSubscriptionStatus: async (): Promise<IFeatureSubscription[]> => [subscription('ED_CONTROL')],
-    getFeatureSubscription: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature),
+    getFeatureSubscription: async (
+      feature: FeatureCode,
+      options?: { refresh?: boolean }
+    ): Promise<IFeatureSubscription> => {
+      subscriptionReads.push({ feature, refresh: !!options?.refresh });
+      return subscription(feature);
+    },
     setFeatureEnabled: async (feature: FeatureCode): Promise<IFeatureSubscription> => subscription(feature),
     activateMarketplacePurchase: async (token: string): Promise<IFeatureSubscription> => {
       activatedTokens.push(token);
@@ -332,6 +341,7 @@ describe('XsProject', () => {
     document.body.appendChild(host);
     window.location.hash = '';
     activatedTokens.length = 0;
+    subscriptionReads.length = 0;
   });
 
   afterEach(() => {
@@ -751,7 +761,7 @@ describe('XsProject', () => {
     expect(host.textContent).not.toContain('ED Control');
   });
 
-  it('hands the Marketplace token to the API once, then takes it out of the URL', async () => {
+  it('hands the Marketplace token to the API once, then leaves a plain Subscription page in the URL', async () => {
     // Where the Marketplace landing page sends the buyer back to; `+` is part of the token.
     window.location.hash = '#/subscription?subscription=returned&marketplaceToken=abc%2Bdef+1';
     await mount();
@@ -760,8 +770,17 @@ describe('XsProject', () => {
     });
 
     expect(activatedTokens).toStrictEqual(['abc+def+1']);
-    expect(window.location.hash).toBe('#/subscription?subscription=returned');
-    expect(window.location.hash).not.toContain('marketplaceToken');
+    // The return marker goes with the token: once the purchase has been answered there is
+    // nothing left to wait for, so neither may keep the switches re-reading.
+    expect(window.location.hash).toBe('#/subscription');
     expect(host.textContent).toContain('ED Control is now active for your organisation');
+
+    const readsBefore: number = subscriptionReads.length;
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // Switching tabs is not a return from Marketplace any more.
+    expect(subscriptionReads.length).toBe(readsBefore);
   });
 });

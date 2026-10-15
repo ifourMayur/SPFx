@@ -240,6 +240,19 @@ describe('FeatureSubscriptionSwitch', () => {
     expect(toggle()?.checked).toBe(true);
   });
 
+  // One offer, one plan per feature: each switch must land on its own plan, not a shared page.
+  it('sends the tab to the feature\'s own Marketplace link when one is configured', async () => {
+    const edControlPlan: string = 'https://marketplace.microsoft.com/product/saas/contoso.xsproject?plan=ed-control';
+    const kypPlan: string = 'https://marketplace.microsoft.com/product/saas/contoso.xsproject?plan=kyp';
+    await render(stubService(NOT_BOUGHT, newCalls(), {
+      links: { ...LINKS, featureOfferUrls: { ED_CONTROL: edControlPlan, KYP: kypPlan } }
+    }));
+
+    await flip();
+
+    expect(tab.location.href).toBe(edControlPlan);
+  });
+
   // Opened after the save had answered, the tab would no longer count as the user's own
   // action and be popup-blocked; sent to Marketplace before it, a refused save would leave
   // the buyer paying for a purchase the API has no checkout for.
@@ -367,6 +380,68 @@ describe('FeatureSubscriptionSwitch', () => {
 
     expect(openSpy).not.toHaveBeenCalled();
     expect(host.textContent).toContain('Your subscription is being processed.');
+  });
+
+  // Switching on never opens Marketplace for a suspended purchase, so "turn on to subscribe"
+  // would promise something the switch does not do.
+  it('tells a switched-off, suspended feature to restore it through Manage subscription', async () => {
+    await render(stubService({ ...NOT_BOUGHT, state: 'suspended', subscriptionStatus: 'Suspended' }, newCalls()));
+
+    expect(host.textContent).toContain('Your ED Control subscription is suspended.');
+    expect(host.textContent).toContain('Manage your subscription to restore access.');
+    expect(host.textContent).not.toContain('Turn on ED Control to subscribe');
+    expect((host.querySelector('a[href="' + MANAGE_URL + '"]') as HTMLAnchorElement).textContent).toBe(
+      'Manage subscription'
+    );
+  });
+
+  it('offers no Manage subscription for a switched-off, suspended feature in Teams', async () => {
+    await render(
+      stubService({ ...NOT_BOUGHT, state: 'suspended', subscriptionStatus: 'Suspended' }, newCalls()),
+      true,
+      false,
+      false
+    );
+
+    expect(host.textContent).toContain('Your ED Control subscription is suspended.');
+    expect(host.querySelector('a[href="' + MANAGE_URL + '"]')).toBeNull();
+  });
+
+  it('tells a switched-off, pending feature that the purchase is being processed', async () => {
+    await render(stubService({ ...NOT_BOUGHT, state: 'pending', subscriptionStatus: 'Pending' }, newCalls()));
+
+    expect(host.textContent).toContain('Your subscription is being processed.');
+    expect(host.textContent).not.toContain('Turn on ED Control to subscribe');
+  });
+
+  // The read the click started from said "pending", so no tab was opened inside the click;
+  // the save then says there is something to buy after all. A tab opened now would be
+  // popup-blocked, so Marketplace is offered as a link - as for a blocked tab.
+  it('offers Marketplace as a link when the save, not the read, says there is something to buy', async () => {
+    await render(
+      stubService({ ...NOT_BOUGHT, state: 'pending', subscriptionStatus: 'Pending' }, newCalls(), {
+        answerWrite: () => ENABLED_NOT_BOUGHT
+      })
+    );
+
+    await flip();
+
+    expect(openSpy).not.toHaveBeenCalled();
+    const link: HTMLAnchorElement | null = host.querySelector('a[href="' + MARKETPLACE_URL + '"]');
+    expect(link?.textContent).toBe('Open Microsoft Marketplace');
+    expect(link?.target).toBe('_blank');
+    expect(link?.rel).toBe('noopener noreferrer');
+    expect(host.textContent).toContain('to complete your subscription.');
+    // Nothing was blocked, so it does not say so.
+    expect(host.textContent).not.toContain('Your browser blocked');
+  });
+
+  it('says that switching a paid-for feature off does not cancel its subscription', async () => {
+    await render(stubService({ ...ACTIVE, isActive: false, isEnabled: false }, newCalls()));
+
+    expect(host.textContent).toContain(
+      'Switching a feature off does not cancel its subscription. Use Manage subscription in Microsoft Marketplace to cancel billing.'
+    );
   });
 
   it('switching off records it and locks the feature at once', async () => {

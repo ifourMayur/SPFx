@@ -37,6 +37,9 @@ Each task has an implementer and a separate reviewer. A task is ticked only once
   - restore your CLAUDE.md sentence;
   - SPFx sends `returnUrl` only when an offer link is configured;
   - the switch uses the two-argument `.then`.
+- [x] **Committed by you:** SPFx `f5d60ed`, backend `2eeea9d` (2026-10-14).
+- [x] **Follow-up, a Marketplace link per feature** (SPFx only; tests 505/505; **not committed yet**). Optional `featureOfferUrls` in `environment.ts` lets each feature open its own plan; a feature without one opens `marketplaceOfferUrl`.
+  - Fill in each plan's link under `featureOfferUrls` in `SUBSCRIPTION_DEMO` (local) and in each deployed environment.
 
 ### Before anyone sets `EnforceFeatureGates=true` (checklist)
 - [ ] Close the security prerequisites listed above: Tender, Setting and Customer endpoints that don't require sign-in; the SQL string concatenation; the connection string carried in the JWT; plaintext secrets.
@@ -176,7 +179,7 @@ Webhook calls carry no tenant JWT, and the static `DbContextFactory.conString` m
 `Business/BMDesk.Business/Common/FeatureSubscriptionCodes.cs`: `ED_CONTROL, KYP, MINUTES, TENDER`, plus `IsKnown` (case-insensitive) and `Normalize`.
 
 ### Marketplace client: `Business/BMDesk.Services/Marketplace/`
-- `MarketplaceOptions`, bound through `IOptions<MarketplaceOptions>` from the `Marketplace` section. **Not `ConfigHelper`**, which reads `appsettings.json` directly and would miss environment variables. Fields: TenantId, ClientId, ClientSecret, OfferId, `PlanFeatures` (planId → feature code), `EnforceFeatureGates` (default false), `GateCacheSeconds` (default 60), `SupportContact`.
+- `MarketplaceOptions`, bound through `IOptions<MarketplaceOptions>` from the `Marketplace` section. **Not `ConfigHelper`**, which reads `appsettings.json` directly and would miss environment variables. Fields: TenantId, ClientId, ClientSecret, OfferId, `PlanFeatures` (planId → feature code, for the plans of OfferId), `OfferFeatures` (offerId → feature code, for an offer per feature: any of its plans unlocks that feature; added 2026-10-15 because Marketplace checkout lists every plan of an offer), `EnforceFeatureGates` (default false), `GateCacheSeconds` (default 60), `SupportContact`.
 - `IMarketplaceFulfillmentClient` / `MarketplaceFulfillmentClient`:
   - a typed `HttpClient` (`AddHttpClient` is already registered at `Startup.cs:87`);
   - a client-credentials token for resource `20e940b3-4c77-4b0b-9a53-9e16a1b010a7`, through MSAL `ConfidentialClientApplication` (`Microsoft.Identity.Web` 4.8.0 is already referenced), which caches it until expiry;

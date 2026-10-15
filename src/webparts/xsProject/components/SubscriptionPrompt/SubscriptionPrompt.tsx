@@ -64,8 +64,11 @@ export default class SubscriptionPrompt extends React.Component<ISubscriptionPro
         return (
           <>
             <p className={styles.message}>{featureName} is turned off.</p>
+            {/* The switch is the tenant's own; billing is Marketplace's, and nothing here
+                cancels it. */}
             <p className={styles.note}>
-              Your subscription stays active in Microsoft Marketplace until you cancel it there.
+              Switching a feature off does not cancel its subscription. Use Manage subscription in
+              Microsoft Marketplace to cancel billing.
             </p>
           </>
         );

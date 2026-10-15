@@ -162,6 +162,17 @@ describe('SubscriptionService.getFeatureSubscription', () => {
 
   // HTTP 200 does not mean the API answered: a refusal inside the envelope is a failure
   // to verify, never "active" and never "inactive".
+  // The API always names the feature; a body that does not - a proxy's `{}` - is not an
+  // answer, and read as "not bought" it would invite a second purchase.
+  it('fails, rather than reading "not bought", when the answer does not name the feature', async () => {
+    const error: unknown = await rejection(
+      build(() => ({ body: envelope({ isActive: false, subscriptionStatus: 'Inactive' }) }), []).getFeatureSubscription('KYP')
+    );
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(200);
+  });
+
   it('fails on a refusal inside an HTTP 200', async () => {
     const error: unknown = await rejection(
       build(() => ({ body: envelope(null, false, 'Subscription lookup failed.') }), []).getFeatureSubscription('KYP')
@@ -236,6 +247,69 @@ describe('SubscriptionService - caching', () => {
 
     expect(subscription.isActive).toBe(true);
     expect(requests.length).toBe(2);
+  });
+
+  // Marketplace's webhook can suspend or cancel a subscription mid-session; a cached answer
+  // that never expired would hide that until the page was reloaded.
+  describe('time to live', () => {
+    const START: number = Date.UTC(2026, 9, 15, 9, 0, 0);
+    const FIVE_MINUTES: number = 5 * 60 * 1000;
+    let now: number;
+    let nowSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      now = START;
+      nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    });
+
+    afterEach(() => {
+      nowSpy.mockRestore();
+    });
+
+    it('does not ask again within five minutes', async () => {
+      const requests: IRecordedRequest[] = [];
+      const service: SubscriptionService = build(byFeature, requests);
+
+      await service.getFeatureSubscription('ED_CONTROL');
+      now = START + FIVE_MINUTES - 1;
+      await service.getFeatureSubscription('ED_CONTROL');
+
+      expect(requests.length).toBe(1);
+    });
+
+    it('asks again once five minutes have passed, and keeps the newer answer', async () => {
+      const requests: IRecordedRequest[] = [];
+      let status: string = 'Active';
+      const service: SubscriptionService = build(
+        () => ({ body: envelope({ feature: 'ED_CONTROL', isActive: status === 'Active', subscriptionStatus: status }) }),
+        requests
+      );
+
+      expect((await service.getFeatureSubscription('ED_CONTROL')).state).toBe('active');
+
+      // Suspended by Marketplace meanwhile.
+      status = 'Suspended';
+      now = START + FIVE_MINUTES;
+      expect((await service.getFeatureSubscription('ED_CONTROL')).state).toBe('suspended');
+      expect((await service.getFeatureSubscription('ED_CONTROL')).state).toBe('suspended');
+      expect(requests.length).toBe(2);
+    });
+
+    it('lets a written answer expire as well', async () => {
+      const requests: IRecordedRequest[] = [];
+      const service: SubscriptionService = build(
+        () => ({ body: envelope({ feature: 'ED_CONTROL', isActive: false, isEnabled: true, subscriptionStatus: 'Inactive' }) }),
+        requests
+      );
+
+      await service.setFeatureEnabled('ED_CONTROL', true);
+      await service.getFeatureSubscription('ED_CONTROL');
+      expect(requests.length).toBe(1);
+
+      now = START + FIVE_MINUTES;
+      await service.getFeatureSubscription('ED_CONTROL');
+      expect(requests.length).toBe(2);
+    });
   });
 
   it('keeps each instance its own cache', async () => {

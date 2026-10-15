@@ -6,7 +6,7 @@ import type { IFeatureSubscriptionGuardState } from './IFeatureSubscriptionGuard
 import SubscriptionPrompt from '../SubscriptionPrompt/SubscriptionPrompt';
 import type { LockedSubscriptionState } from '../SubscriptionPrompt/ISubscriptionPromptProps';
 import SubscriptionStatus from '../SubscriptionStatus/SubscriptionStatus';
-import { FEATURE_NAMES, IFeatureSubscription } from '../../../../models/FeatureSubscription';
+import { FEATURE_NAMES, IFeatureSubscription, offerUrlFor } from '../../../../models/FeatureSubscription';
 
 /**
  * Renders a paid feature only once the Web API reports that the tenant has bought it.
@@ -108,7 +108,7 @@ export default class FeatureSubscriptionGuard extends React.Component<
       <SubscriptionPrompt
         featureName={featureName}
         state={isUnverified || !subscription ? 'error' : FeatureSubscriptionGuard._toLockedState(subscription)}
-        links={subscriptionService.links}
+        links={{ ...subscriptionService.links, marketplaceOfferUrl: offerUrlFor(subscriptionService.links, feature) }}
         isAwaitingMarketplace={isAwaitingMarketplace}
         onManage={this._onManage}
         onCheckAgain={this._onCheckAgain}

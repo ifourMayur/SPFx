@@ -48,9 +48,11 @@ export interface ISubscriptionService {
   /**
    * One feature's subscription - `GET api/Subscription/features/{featureCode}`.
    *
-   * Cached for the session per feature, and concurrent calls for the same feature share
-   * one request, so several gated screens - or one remounted by the router - do not each
-   * ask again. A failed call is not cached, so a retry really retries.
+   * Cached per feature for {@link FEATURE_CACHE_TTL_MS}, and concurrent calls for the same
+   * feature share one request, so several gated screens - or one remounted by the router -
+   * do not each ask again. The cache expires so that a suspension or cancellation
+   * Marketplace reports to the API mid-session is seen without a reload. A failed call is
+   * not cached, so a retry really retries.
    *
    * @throws ApiError - when the call fails, and when the API answers without a
    *   subscription for `feature`. Neither is ever reported as "inactive": a feature the
@@ -107,6 +109,22 @@ const DISABLE_ACTION: string = 'disable';
 /** The action that turns a Marketplace purchase token into an active subscription. */
 const ACTIVATE_ACTION: string = 'marketplace/activate';
 
+/**
+ * How long one feature's answer is reused before the API is asked again: five minutes.
+ *
+ * Long enough that screens and remounts share one read, short enough that a subscription
+ * Marketplace suspends or cancels - which reaches the API through its webhook, not through
+ * this client - stops being shown as active within the session.
+ */
+export const FEATURE_CACHE_TTL_MS: number = 5 * 60 * 1000;
+
+/** One cached answer, or the read still fetching it, and when it stops being reused. */
+interface IFeatureCacheEntry {
+  readonly request: Promise<IFeatureSubscription>;
+  /** `Date.now()` from which the entry is stale. */
+  readonly expiresAt: number;
+}
+
 /** Default {@link ISubscriptionService}, built on `BaseApiService`. */
 export class SubscriptionService extends BaseApiService implements ISubscriptionService {
   public readonly links: ISubscriptionLinks;
@@ -114,13 +132,13 @@ export class SubscriptionService extends BaseApiService implements ISubscription
   private readonly _endpoint: string;
 
   /**
-   * In-flight and settled reads, keyed by feature code.
+   * In-flight and settled reads, keyed by feature code, each reused until it expires.
    *
    * Per instance, not module-level: `ServiceFactory` builds one container per web part
    * instance and API, and every entry is the API's answer for the JWT of that session -
    * never a flag the client set.
    */
-  private readonly _cache: { [feature: string]: Promise<IFeatureSubscription> } = {};
+  private readonly _cache: { [feature: string]: IFeatureCacheEntry } = {};
 
   /**
    * @param apiService - HTTP gateway used for every call.
@@ -151,18 +169,18 @@ export class SubscriptionService extends BaseApiService implements ISubscription
     feature: FeatureCode,
     options?: IFeatureSubscriptionRequestOptions
   ): Promise<IFeatureSubscription> {
-    const cached: Promise<IFeatureSubscription> | undefined = this._cache[feature];
+    const cached: IFeatureCacheEntry | undefined = this._cache[feature];
 
-    if (cached && !options?.refresh) {
-      return cached;
+    if (cached && !options?.refresh && Date.now() < cached.expiresAt) {
+      return cached.request;
     }
 
     const request: Promise<IFeatureSubscription> = this._readFeature(feature);
-    this._cache[feature] = request;
+    const entry: IFeatureCacheEntry = this._store(feature, request);
 
     // Evicted only if it is still the entry: a refresh started meanwhile owns the slot.
     request.catch((): void => {
-      if (this._cache[feature] === request) {
+      if (this._cache[feature] === entry) {
         delete this._cache[feature];
       }
     });
@@ -195,7 +213,7 @@ export class SubscriptionService extends BaseApiService implements ISubscription
       }
 
       // The answer to a write is the freshest there is; a later read should not undo it.
-      this._cache[feature] = Promise.resolve(subscription);
+      this._store(feature, Promise.resolve(subscription));
       Log.info(LOG_SOURCE, `${feature} switched ${isEnabled ? 'on' : 'off'}: ${subscription.state}, usable: ${subscription.isActive}.`);
 
       return subscription;
@@ -220,7 +238,7 @@ export class SubscriptionService extends BaseApiService implements ISubscription
       }
 
       // Seeded, not merely cleared: an in-flight read could otherwise cache the stale answer.
-      this._cache[subscription.feature] = Promise.resolve(subscription);
+      this._store(subscription.feature, Promise.resolve(subscription));
       Log.info(LOG_SOURCE, `${subscription.feature} activated: ${subscription.state}, usable: ${subscription.isActive}.`);
 
       return subscription;
@@ -228,6 +246,14 @@ export class SubscriptionService extends BaseApiService implements ISubscription
       this.logFailure(error, 'Could not activate the Marketplace purchase.');
       throw error;
     }
+  }
+
+  /** Caches `request` as the feature's answer for the next {@link FEATURE_CACHE_TTL_MS}. */
+  private _store(feature: FeatureCode, request: Promise<IFeatureSubscription>): IFeatureCacheEntry {
+    const entry: IFeatureCacheEntry = { request, expiresAt: Date.now() + FEATURE_CACHE_TTL_MS };
+    this._cache[feature] = entry;
+
+    return entry;
   }
 
   private async _readFeature(feature: FeatureCode): Promise<IFeatureSubscription> {

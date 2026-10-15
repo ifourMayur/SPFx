@@ -106,6 +106,15 @@ export interface ISubscriptionLinks {
   readonly marketplaceOfferUrl: string;
   /** Where an existing subscription is changed or cancelled. */
   readonly manageSubscriptionUrl: string;
+  /**
+   * Optional: a Marketplace link per feature - each feature's own offer - so switching on KYP
+   * opens a checkout that offers KYP alone (Marketplace's checkout lists every plan of an
+   * offer). A feature without one (or with a link that could not be opened) falls back to
+   * `marketplaceOfferUrl`; see {@link offerUrlFor}. The link only chooses where the buyer
+   * starts: which feature a purchase unlocks is still decided by the Web API from the offer
+   * and plan actually bought.
+   */
+  readonly featureOfferUrls?: Readonly<Partial<Record<FeatureCode, string>>>;
 }
 
 /**
@@ -129,8 +138,8 @@ const SUSPENDED_STATUSES: string[] = ['suspended'];
  *   with `isActive` missing or `false` is not usable - paid for, perhaps, but switched off;
  *   the text only says where the subscription stands.
  * - **The answer must be about the feature that was asked for.** A response naming a
- *   different feature is rejected rather than reused, so an active ED Control can never
- *   unlock Minutes through a mis-routed or mis-cached call.
+ *   different feature - or none - is rejected rather than reused, so an active ED Control
+ *   can never unlock Minutes through a mis-routed or mis-cached call.
  *
  * @param response - the payload, already out of its `ResponseDetail` envelope.
  * @param requested - the feature the call asked about.
@@ -147,9 +156,12 @@ export function toFeatureSubscription(
 
   const body: IFeatureSubscriptionResponse = response as IFeatureSubscriptionResponse;
 
-  // Compared case-insensitively because ASP.NET routes the same way; absent is accepted,
-  // since the per-feature URL already names the feature.
-  if (body.feature && body.feature.toUpperCase() !== requested) {
+  // Compared case-insensitively because ASP.NET routes the same way. Absent is rejected too:
+  // the API always names the feature, so a body that does not - a proxy's `{}`, say - is not
+  // an answer, and read as "not bought" it would invite a second purchase.
+  const feature: string = typeof body.feature === 'string' ? body.feature.trim().toUpperCase() : '';
+
+  if (feature !== requested) {
     return undefined;
   }
 
@@ -341,4 +353,15 @@ function safeDecode(value: string): string {
  */
 export function isNavigableUrl(url: string | undefined): boolean {
   return /^https:\/\/[^\s/]+/i.test((url || '').trim());
+}
+
+/**
+ * Where buying `feature` starts: its own plan's link when one is configured and can be
+ * opened, otherwise the offer's. An empty answer means neither is configured, which every
+ * caller already treats as "subscribing is not available here".
+ */
+export function offerUrlFor(links: ISubscriptionLinks, feature: FeatureCode): string {
+  const featureUrl: string | undefined = links.featureOfferUrls?.[feature];
+
+  return isNavigableUrl(featureUrl) ? (featureUrl as string) : links.marketplaceOfferUrl;
 }

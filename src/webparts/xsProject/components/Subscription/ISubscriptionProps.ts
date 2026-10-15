@@ -25,8 +25,10 @@ export interface ISubscriptionProps {
   /** The route was reached from the Marketplace landing page's redirect. */
   isReturningFromMarketplace: boolean;
   /**
-   * Called once the API has answered a token - activated or refused - so the router can
-   * take the spent token out of the URL.
+   * Called once a token in the URL needs to be there no longer - the API answered it
+   * (activated or refused; a failed token is kept in memory for "Try again"), it was spent
+   * before a remount, or this user may not buy - so the router can take it, and the return
+   * marker with it, out of the URL.
    */
   onTokenConsumed: () => void;
 }

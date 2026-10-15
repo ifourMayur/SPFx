@@ -23,6 +23,12 @@ export interface IFeatureSubscriptionSwitchState {
    */
   isPopupBlocked: boolean;
   /**
+   * The save answered that there is something to buy, but the click opened no tab, because
+   * the read it started from said otherwise (pending, say). A tab opened now would be
+   * blocked, so Marketplace is offered as the same link as for a blocked tab.
+   */
+  isCheckoutUnopened: boolean;
+  /**
    * True once a tab was sent to Marketplace from here, or the user arrived back from it. Makes
    * the switch re-check when the tab regains focus, and explains that a purchase can take
    * a moment to arrive - it changes what is said, never what is allowed.

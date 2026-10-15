@@ -92,6 +92,14 @@ const UI_DEFAULTS: IUiEnvironmentSettings = {
  * - `manageSubscriptionUrl` - where an existing subscription is changed or cancelled: the
  *   publisher's own subscription-management page if there is one, otherwise the Microsoft
  *   365 admin center's "Your products" page, where Marketplace SaaS purchases are listed.
+ * - `featureOfferUrls` (optional) - a link per feature code, to that feature's **own offer**
+ *   (one offer per feature, each with its own plan or plans). Marketplace's checkout lists
+ *   every plan of the offer it was opened from, and no link can hide the others, so a separate
+ *   offer is the only way the buyer sees just the feature they switched on. A feature left out
+ *   falls back to `marketplaceOfferUrl`. The link only decides where the buyer starts; the Web
+ *   API decides what a purchase unlocks - from the offer bought (`Marketplace:OfferFeatures`),
+ *   or for the shared offer from its plan (`Marketplace:PlanFeatures`) - and refuses any offer
+ *   it was not configured with, so every offer linked here must also be listed there.
  *
  * Empty means "not configured", and hides that action rather than offering a dead link -
  * see `isNavigableUrl` in `src/models/FeatureSubscription.ts`. Fill in the offer URL here
@@ -112,8 +120,12 @@ const SUBSCRIPTION_NOT_CONFIGURED: ISubscriptionLinks = {
  */
 const SUBSCRIPTION_DEMO: ISubscriptionLinks = {
   //marketplaceOfferUrl: 'https://marketplace.microsoft.com/',
-  marketplaceOfferUrl: 'https://marketplace.microsoft.com/en-us/product/saas/ifourtechnolabprivatelimited1715753920355.ifourtechnolab_tablab-preview?tab=Overview&flightCodes=97216b75-bca3-4444-94c9-b387969aee7c',
-  manageSubscriptionUrl: 'https://admin.microsoft.com/Adminportal/Home#/subscriptions'
+  marketplaceOfferUrl: 'https://marketplace.microsoft.com/en-us/product/saas/ifourtechnolabprivatelimited1715753920355.xsproject_sandbox-preview?tab=Overview&flightCodes=e9557583-eaf3-4994-a405-326d4384ed94',
+  manageSubscriptionUrl: 'https://admin.microsoft.com/Adminportal/Home#/subscriptions',
+  // Each feature's own offer, e.g. KYP: '<the KYP offer's preview link, with its flightCodes>'.
+  // Features left out open marketplaceOfferUrl above. Each offer must also be in the API's
+  // Marketplace:OfferFeatures, or its purchases are refused as "not for XSProject".
+  featureOfferUrls: {}
 };
 
 /** Requests are abandoned after this many milliseconds. Use `0` to disable. */

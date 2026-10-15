@@ -5,11 +5,14 @@
  * What they pin down: one switch per paid feature; a Marketplace purchase token is handed
  * to the API once, however often the page mounts and however long the API takes; the
  * answer re-reads every switch and takes the token out of the URL, whether the API
- * activated anything or refused; and nothing is offered for sale to a user who may not buy,
- * or in a host (Teams) that Marketplace cannot send the buyer back to.
+ * activated anything or refused; a token whose activation failed can be tried again, even
+ * after a remount; a user who may not buy never has the token handed over; and nothing is
+ * offered for sale to a user who may not buy, or in a host (Teams) that Marketplace cannot
+ * send the buyer back to.
  *
- * The consumed-token record is module-level and outlives every mount, which is the point -
- * so each test uses a token of its own.
+ * The token records are module-level and outlive every mount, which is the point - so each
+ * test uses a token of its own, and `afterEach` forgets a failed one, which a later mount
+ * would otherwise still offer to try again.
  *
  * Every `ReactDOM.render` here is unmounted in `afterEach`.
  */
@@ -18,7 +21,7 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import { act } from 'react-dom/test-utils';
 
-import Subscription from './Subscription';
+import Subscription, { forgetMarketplaceActivations } from './Subscription';
 import {
   FEATURE_CODES,
   FeatureCode,
@@ -74,6 +77,8 @@ function stubService(
     hold?: boolean;
     /** Refuses the activation with this error. */
     refuse?: Error;
+    /** Fails the first activation with this error - a timeout, say - and answers the rest. */
+    failOnce?: Error;
     /** What the activation buys. */
     feature?: FeatureCode;
     /** What the API answers the activation with, in place of `bought(feature)`. */
@@ -116,6 +121,10 @@ function stubService(
         return Promise.reject(options.refuse);
       }
 
+      if (options.failOnce && stub.activations.length === 1) {
+        return Promise.reject(options.failOnce);
+      }
+
       if (!options.hold) {
         return Promise.resolve(activate(options.feature || 'ED_CONTROL'));
       }
@@ -148,6 +157,7 @@ describe('Subscription', () => {
     unmountHost();
     host.remove();
     openSpy.mockRestore();
+    forgetMarketplaceActivations();
   });
 
   /** The one `ReactDOM.render` of this file, paired with the unmount in `afterEach`. */
@@ -196,6 +206,12 @@ describe('Subscription', () => {
 
   function toggle(feature: FeatureCode): HTMLInputElement | null {
     return host.querySelector(`#feature-switch-${feature}`);
+  }
+
+  function tryAgainButtons(): HTMLButtonElement[] {
+    return Array.prototype.slice
+      .call(host.querySelectorAll('button'))
+      .filter((button: HTMLButtonElement) => button.textContent === 'Try again');
   }
 
   it('shows one switch for every paid feature', async () => {
@@ -312,6 +328,89 @@ describe('Subscription', () => {
     });
     // Re-read after the refusal too, as after a success.
     expect(service.reads.length).toBe(FEATURE_CODES.length * 2);
+  });
+
+  // A timeout or a "temporarily unavailable" says nothing about the purchase itself: the
+  // token is still good, and taking it away would leave a second checkout as the only way.
+  it('keeps a token whose activation failed, and Try again sends that same token again', async () => {
+    const service: IStub = stubService({ failOnce: new Error('The service is temporarily unavailable.') });
+    const onTokenConsumed: jest.Mock = jest.fn();
+
+    await render(service, { marketplaceToken: 'token-retry', isReturningFromMarketplace: true, onTokenConsumed });
+    await flush();
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('The service is temporarily unavailable.');
+    // Out of the URL all the same...
+    expect(onTokenConsumed).toHaveBeenCalledTimes(1);
+    await render(service, { isReturningFromMarketplace: true, onTokenConsumed });
+
+    // ...and still there to try again.
+    expect(tryAgainButtons().length).toBe(1);
+
+    await act(async () => {
+      tryAgainButtons()[0].click();
+    });
+    await flush();
+
+    expect(service.activations).toStrictEqual(['token-retry', 'token-retry']);
+    expect(host.textContent).toContain('ED Control is now active for your organisation');
+    expect(host.textContent).not.toContain('Unable to activate');
+    expect(tryAgainButtons()).toStrictEqual([]);
+  });
+
+  it('still offers to try again after a remount, with the token gone from the URL', async () => {
+    const service: IStub = stubService({ failOnce: new Error('The request timed out.') });
+
+    await render(service, { marketplaceToken: 'token-retry-remount' });
+    await flush();
+    await unmount();
+    // "Change site", say: the page mounts afresh, and the URL no longer has the token.
+    await render(service);
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('The request timed out.');
+
+    await act(async () => {
+      tryAgainButtons()[0].click();
+    });
+    await flush();
+
+    expect(service.activations).toStrictEqual(['token-retry-remount', 'token-retry-remount']);
+    expect(host.textContent).toContain('ED Control is now active for your organisation');
+  });
+
+  it('leaves nothing to try again once the purchase is activated', async () => {
+    const service: IStub = stubService();
+
+    await render(service, { marketplaceToken: 'token-no-retry' });
+    await flush();
+    await unmount();
+    await render(service);
+
+    expect(tryAgainButtons()).toStrictEqual([]);
+    expect(host.textContent).not.toContain('Unable to activate');
+    expect(service.activations).toStrictEqual(['token-no-retry']);
+  });
+
+  // The API refuses other roles; asking it anyway would only turn a token an administrator
+  // could have used into a refusal.
+  it('does not hand the token of a user who may not buy to the API, and says who can complete the purchase', async () => {
+    const service: IStub = stubService();
+    const onTokenConsumed: jest.Mock = jest.fn();
+
+    await render(service, {
+      canManage: false,
+      marketplaceToken: 'token-not-admin',
+      isReturningFromMarketplace: true,
+      onTokenConsumed
+    });
+    await flush();
+
+    expect(service.activations).toStrictEqual([]);
+    expect(onTokenConsumed).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain(
+      'Only an administrator can complete this purchase. Ask an administrator to sign in and open the Subscription page.'
+    );
+    expect(host.textContent).not.toContain('Activating your purchase');
   });
 
   it('does not call a feature active that the API did not report active', async () => {

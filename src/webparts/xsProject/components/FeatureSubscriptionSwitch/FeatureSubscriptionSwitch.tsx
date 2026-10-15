@@ -11,7 +11,8 @@ import {
   FEATURE_NAMES,
   IFeatureSubscription,
   isNavigableUrl,
-  needsMarketplaceCheckout
+  needsMarketplaceCheckout,
+  offerUrlFor
 } from '../../../../models/FeatureSubscription';
 
 /** Said instead of offering a purchase where this host cannot make one (Teams). */
@@ -39,7 +40,8 @@ const PURCHASE_UNAVAILABLE_MESSAGE: string = 'Open XSProject in SharePoint to su
  * 3. Only then is the tab sent to Marketplace. A refused save closes it instead, so nobody
  *    pays for a purchase the API has no checkout for; so does an answer with nothing left
  *    to buy. A tab the browser blocks anyway does not lose the purchase: the choice is
- *    still saved, and Marketplace is offered as a link.
+ *    still saved, and Marketplace is offered as a link. So is a purchase the click opened
+ *    no tab for, because the read it started from had nothing to buy but the save did.
  *
  * A new tab keeps the sign-in and the chosen site; switching back to this one re-checks.
  * Inside Teams no purchase is offered at all (`isPurchaseAvailable`): the page Marketplace
@@ -67,6 +69,7 @@ export default class FeatureSubscriptionSwitch extends React.Component<
       isSaving: false,
       isUnverified: false,
       isPopupBlocked: false,
+      isCheckoutUnopened: false,
       isAwaitingMarketplace: !!props.isReturningFromMarketplace
     };
   }
@@ -83,6 +86,7 @@ export default class FeatureSubscriptionSwitch extends React.Component<
       this.setState({
         subscription: undefined,
         isPopupBlocked: false,
+        isCheckoutUnopened: false,
         isAwaitingMarketplace: !!this.props.isReturningFromMarketplace
       });
       this._load(!!this.props.isReturningFromMarketplace);
@@ -147,19 +151,21 @@ export default class FeatureSubscriptionSwitch extends React.Component<
   }
 
   /**
-   * The browser blocked the Marketplace tab after the choice was saved: Marketplace as a
+   * The choice was saved but no tab reached Marketplace - the browser blocked it, or the
+   * click opened none because the read it started from had nothing to buy: Marketplace as a
    * link instead, for as long as there is still something to buy there.
    */
   private _renderBlockedTab(subscription: IFeatureSubscription): React.ReactNode {
-    const offerUrl: string = this.props.subscriptionService.links.marketplaceOfferUrl;
+    const { isPopupBlocked, isCheckoutUnopened } = this.state;
+    const offerUrl: string = offerUrlFor(this.props.subscriptionService.links, this.props.feature);
 
-    if (!this.state.isPopupBlocked || !needsMarketplaceCheckout(subscription) || !isNavigableUrl(offerUrl)) {
+    if ((!isPopupBlocked && !isCheckoutUnopened) || !needsMarketplaceCheckout(subscription) || !isNavigableUrl(offerUrl)) {
       return null;
     }
 
     return (
       <p className={styles.note} role="alert">
-        Your browser blocked the Microsoft Marketplace tab.{' '}
+        {isPopupBlocked && <>Your browser blocked the Microsoft Marketplace tab.{' '}</>}
         <a href={offerUrl} target="_blank" rel="noopener noreferrer" onClick={this._onMarketplaceLinkFollowed}>
           Open Microsoft Marketplace
         </a>{' '}
@@ -171,9 +177,9 @@ export default class FeatureSubscriptionSwitch extends React.Component<
   /** What is said under the switch: the plan when usable, otherwise why it is not. */
   private _renderDetail(subscription: IFeatureSubscription, featureName: string): React.ReactNode {
     const { isLoading, isSaving, isUnverified } = this.state;
-    const { isPurchaseAvailable } = this.props;
+    const { feature, isPurchaseAvailable } = this.props;
     const { links } = this.props.subscriptionService;
-    const canBeBought: boolean = isNavigableUrl(links.marketplaceOfferUrl);
+    const canBeBought: boolean = isNavigableUrl(offerUrlFor(links, feature));
 
     if (isLoading || isSaving) {
       return (
@@ -194,6 +200,13 @@ export default class FeatureSubscriptionSwitch extends React.Component<
     if (!subscription.isEnabled) {
       if (subscription.state === 'active') {
         return this._renderPrompt('disabled');
+      }
+
+      // Bought already: switching on opens no Marketplace for these, so "turn on to
+      // subscribe" would promise what the switch does not do. A suspended purchase is
+      // mended through Manage subscription - offered only where this host can buy.
+      if (subscription.state === 'suspended' || subscription.state === 'pending') {
+        return this._renderPrompt(subscription.state, isPurchaseAvailable);
       }
 
       let note: string = `${featureName} requires an active subscription. Subscribing is not available here yet.`;
@@ -224,14 +237,21 @@ export default class FeatureSubscriptionSwitch extends React.Component<
     return this._renderPrompt(state);
   }
 
-  private _renderPrompt(state: LockedSubscriptionState): React.ReactElement {
+  /** @param offersManage - false hides Manage subscription, which the prompt otherwise offers where it is configured. */
+  private _renderPrompt(state: LockedSubscriptionState, offersManage: boolean = true): React.ReactElement {
     const { feature, canManage, isPurchaseAvailable, subscriptionService } = this.props;
+    const { links } = subscriptionService;
 
     return (
       <SubscriptionPrompt
         featureName={FEATURE_NAMES[feature]}
         state={state}
-        links={subscriptionService.links}
+        // The prompt only knows "the offer": hand it this feature's own link as that.
+        links={{
+          ...links,
+          marketplaceOfferUrl: offerUrlFor(links, feature),
+          manageSubscriptionUrl: offersManage ? links.manageSubscriptionUrl : ''
+        }}
         isAwaitingMarketplace={this.state.isAwaitingMarketplace}
         // Subscribe only where this user may buy and this host can come back from it.
         onSubscribe={canManage && isPurchaseAvailable ? this._onSubscribe : undefined}
@@ -276,7 +296,7 @@ export default class FeatureSubscriptionSwitch extends React.Component<
   private _save(isEnabled: boolean): void {
     const { subscription, isSaving } = this.state;
     const { feature, subscriptionService, isPurchaseAvailable } = this.props;
-    const offerUrl: string = subscriptionService.links.marketplaceOfferUrl;
+    const offerUrl: string = offerUrlFor(subscriptionService.links, feature);
 
     if (!subscription || isSaving) {
       return;
@@ -301,7 +321,8 @@ export default class FeatureSubscriptionSwitch extends React.Component<
       pendingEnabled: isEnabled,
       saveError: undefined,
       isUnverified: false,
-      isPopupBlocked: false
+      isPopupBlocked: false,
+      isCheckoutUnopened: false
     });
 
     // The two-argument form, not `.then(...).catch(...)`: only the service's own rejection may
@@ -331,7 +352,9 @@ export default class FeatureSubscriptionSwitch extends React.Component<
             pendingEnabled: undefined,
             subscription: saved,
             isAwaitingMarketplace: (opensCheckout && !!tab) || state.isAwaitingMarketplace,
-            isPopupBlocked: opensCheckout && wantsTab && !tab
+            isPopupBlocked: opensCheckout && wantsTab && !tab,
+            // Not opened now: outside the click it would be blocked anyway.
+            isCheckoutUnopened: opensCheckout && !wantsTab
           }));
         }
       }, (error: unknown) => {
@@ -383,9 +406,9 @@ export default class FeatureSubscriptionSwitch extends React.Component<
     this.setState({ isAwaitingMarketplace: true });
   };
 
-  /** The user followed the link offered in place of a blocked tab. */
+  /** The user followed the link offered in place of a tab. */
   private _onMarketplaceLinkFollowed = (): void => {
-    this.setState({ isAwaitingMarketplace: true, isPopupBlocked: false });
+    this.setState({ isAwaitingMarketplace: true, isPopupBlocked: false, isCheckoutUnopened: false });
   };
 
   private _onCheckAgain = (): void => {

@@ -7,6 +7,7 @@ import {
   isNavigableUrl,
   MARKETPLACE_TOKEN_PARAMETER,
   needsMarketplaceCheckout,
+  offerUrlFor,
   readMarketplaceToken,
   toActivatedFeatureSubscription,
   toFeatureSubscription,
@@ -57,8 +58,8 @@ describe('toFeatureSubscription', () => {
   });
 
   it('reads a usable feature as switched on even when an older API leaves the switch out', () => {
-    expect(toFeatureSubscription({ isActive: true }, 'ED_CONTROL')?.isEnabled).toBe(true);
-    expect(toFeatureSubscription({ isActive: false }, 'ED_CONTROL')?.isEnabled).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: true }, 'ED_CONTROL')?.isEnabled).toBe(true);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: false }, 'ED_CONTROL')?.isEnabled).toBe(false);
   });
 
   it('maps an inactive subscription', () => {
@@ -73,14 +74,14 @@ describe('toFeatureSubscription', () => {
 
   // `isActive` is the authority. The status text only says which kind of "not active".
   it('is not active on the status text alone', () => {
-    expect(toFeatureSubscription({ isActive: false, subscriptionStatus: 'Active' }, 'ED_CONTROL')?.isActive).toBe(false);
-    expect(toFeatureSubscription({ isActive: null, subscriptionStatus: 'Active' }, 'ED_CONTROL')?.isActive).toBe(false);
-    expect(toFeatureSubscription({ subscriptionStatus: 'Subscribed' }, 'ED_CONTROL')?.isActive).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: false, subscriptionStatus: 'Active' }, 'ED_CONTROL')?.isActive).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: null, subscriptionStatus: 'Active' }, 'ED_CONTROL')?.isActive).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', subscriptionStatus: 'Subscribed' }, 'ED_CONTROL')?.isActive).toBe(false);
   });
 
   it('takes only an explicit true as active', () => {
-    expect(toFeatureSubscription({ isActive: 'true' as unknown as boolean }, 'ED_CONTROL')?.isActive).toBe(false);
-    expect(toFeatureSubscription({ isActive: 1 as unknown as boolean }, 'ED_CONTROL')?.isActive).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: 'true' as unknown as boolean }, 'ED_CONTROL')?.isActive).toBe(false);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: 1 as unknown as boolean }, 'ED_CONTROL')?.isActive).toBe(false);
   });
 
   it.each([
@@ -92,7 +93,7 @@ describe('toFeatureSubscription', () => {
     ['Unsubscribed', 'inactive'],
     ['', 'inactive']
   ])('reads status %p as %p', (status: string, state: string) => {
-    expect(toFeatureSubscription({ isActive: false, subscriptionStatus: status }, 'ED_CONTROL')?.state).toBe(state);
+    expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: false, subscriptionStatus: status }, 'ED_CONTROL')?.state).toBe(state);
   });
 
   // A mis-routed or mis-cached answer about one feature must never unlock another.
@@ -100,9 +101,17 @@ describe('toFeatureSubscription', () => {
     expect(toFeatureSubscription({ feature: 'ED_CONTROL', isActive: true }, 'MINUTES')).toBeUndefined();
   });
 
-  it('accepts the feature name in any case, and an answer that does not name it', () => {
+  it('accepts the feature name in any case', () => {
     expect(toFeatureSubscription({ feature: 'ed_control', isActive: true }, 'ED_CONTROL')?.isActive).toBe(true);
-    expect(toFeatureSubscription({ isActive: true }, 'ED_CONTROL')?.feature).toBe('ED_CONTROL');
+  });
+
+  // The API always names the feature. A body that does not - a proxy's `{}`, say - read as
+  // "not bought" would invite a second purchase; it is "could not verify" instead.
+  it('rejects an answer that does not name the feature', () => {
+    expect(toFeatureSubscription({}, 'ED_CONTROL')).toBeUndefined();
+    expect(toFeatureSubscription({ isActive: true }, 'ED_CONTROL')).toBeUndefined();
+    expect(toFeatureSubscription({ feature: null, isActive: false }, 'ED_CONTROL')).toBeUndefined();
+    expect(toFeatureSubscription({ feature: '  ', isActive: false }, 'ED_CONTROL')).toBeUndefined();
   });
 
   it('rejects a payload that is not an answer at all', () => {
@@ -113,7 +122,7 @@ describe('toFeatureSubscription', () => {
   });
 
   it('drops blank plan fields', () => {
-    const subscription = toFeatureSubscription({ isActive: true, planId: '  ', planName: null }, 'KYP');
+    const subscription = toFeatureSubscription({ feature: 'KYP', isActive: true, planId: '  ', planName: null }, 'KYP');
 
     expect(subscription?.planId).toBeUndefined();
     expect(subscription?.planName).toBeUndefined();
@@ -279,5 +288,34 @@ describe('isNavigableUrl', () => {
     expect(isNavigableUrl('/relative')).toBe(false);
     // Assembled so the linter's `no-script-url` does not mistake the test for the hazard.
     expect(isNavigableUrl(['javascript', 'alert(1)'].join(':'))).toBe(false);
+  });
+});
+
+describe('offerUrlFor', () => {
+  const OFFER: string = 'https://marketplace.microsoft.com/product/saas/contoso.xsproject';
+  const KYP_PLAN: string = 'https://marketplace.microsoft.com/product/saas/contoso.xsproject?tab=PlansAndPrice&plan=kyp';
+
+  it('sends a feature to its own link when one is configured', () => {
+    const links = { marketplaceOfferUrl: OFFER, manageSubscriptionUrl: '', featureOfferUrls: { KYP: KYP_PLAN } };
+
+    expect(offerUrlFor(links, 'KYP')).toBe(KYP_PLAN);
+  });
+
+  it('falls back to the offer link for a feature without one', () => {
+    const links = { marketplaceOfferUrl: OFFER, manageSubscriptionUrl: '', featureOfferUrls: { KYP: KYP_PLAN } };
+
+    expect(offerUrlFor(links, 'MINUTES')).toBe(OFFER);
+    expect(offerUrlFor({ marketplaceOfferUrl: OFFER, manageSubscriptionUrl: '' }, 'KYP')).toBe(OFFER);
+  });
+
+  it('ignores a feature link that could not be opened, rather than sending the user nowhere', () => {
+    const links = { marketplaceOfferUrl: OFFER, manageSubscriptionUrl: '', featureOfferUrls: { KYP: 'http://insecure', MINUTES: '' } };
+
+    expect(offerUrlFor(links, 'KYP')).toBe(OFFER);
+    expect(offerUrlFor(links, 'MINUTES')).toBe(OFFER);
+  });
+
+  it('reports "not configured" when neither link is set', () => {
+    expect(offerUrlFor({ marketplaceOfferUrl: '', manageSubscriptionUrl: '' }, 'KYP')).toBe('');
   });
 });

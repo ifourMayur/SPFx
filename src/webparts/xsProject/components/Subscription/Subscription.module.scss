@@ -32,6 +32,27 @@
   color: "[theme:errorText, default: #a4262c]";
 }
 
+.failureMessage {
+  margin: 0 0 0.5em;
+}
+
+// "Try again" after a failed activation; matches the prompts' secondary button.
+.retry {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid "[theme:neutralTertiary, default: #a19f9d]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+}
+
 .note {
   color: "[theme:neutralSecondary, default: #605e5c]";
 }

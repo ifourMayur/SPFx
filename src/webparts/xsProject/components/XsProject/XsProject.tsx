@@ -17,12 +17,16 @@ import { IFolderProvisionFailure, IFolderProvisionResult } from '../../../../mod
 import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ISharePointSite } from '../../../../models/SharePointSite';
+import { isSaasReturnFragment } from '../../../../models/Saas';
 
 /** `BuildingResource.msgAddProject` / `msgUpdateProject`, including their double spaces. */
 const SAVE_MESSAGES = {
   added: 'Project  Added successfully!',
   updated: 'Project  Updated successfully!'
 };
+
+/** sessionStorage key of the last site chosen in this tab - see `XsProject._restoreSiteForSaasReturn`. */
+export const LAST_SITE_STORAGE_KEY: string = 'xsProject.lastSite';
 
 /**
  * Root component rendered by `XsProjectWebPart`.
@@ -31,7 +35,9 @@ const SAVE_MESSAGES = {
  * the pages it navigates to are only ever rendered once `Login` reports a successful
  * sign-in - using the `onLoginSucceeded`/`onLoginFailed` callbacks `Login` already exposes
  * rather than a second authentication mechanism - and then only once `SharePointSites`
- * reports the site the user chose to work in.
+ * reports the site the user chose to work in. The one exception to the picker is the
+ * return from a Marketplace purchase, which reopens the site chosen last in this tab - see
+ * `_restoreSiteForSaasReturn`.
  *
  * It also owns the forms saved during the session, and the names of the projects the
  * listing has shown, because routing unmounts the page that would otherwise hold them -
@@ -44,6 +50,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
 
     this.state = {
       isAuthenticated: false,
+      selectedSite: XsProject._restoreSiteForSaasReturn(),
       projectNames: {},
       savedForms: {}
     };
@@ -59,7 +66,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       projectListingService,
       lookupService,
       loginService,
-      sharePointSiteService
+      sharePointSiteService,
+      saasService
     } = this.props;
     const {
       isAuthenticated,
@@ -99,6 +107,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               projectService={projectService}
               projectListingService={projectListingService}
               lookupService={lookupService}
+              saasService={saasService}
               projectNames={projectNames}
               savedForms={savedForms}
               features={this._getFeatures()}
@@ -171,7 +180,45 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
 
   private _onSiteSelected = (site: ISharePointSite): void => {
     this.setState({ selectedSite: site, isChangingSite: false });
+    XsProject._withSessionStorage((storage: Storage) => storage.setItem(LAST_SITE_STORAGE_KEY, JSON.stringify(site)));
   };
+
+  /**
+   * The site to reopen when the page is the return from a Marketplace purchase
+   * (`#/subscription?saas=returned...`), otherwise `undefined` - the picker, as on every load.
+   *
+   * Buying leaves the SharePoint page for the Marketplace in the same tab, so the return is
+   * a fresh page load: without this the user would have to pick a site again before the
+   * Subscription page could activate the purchase and show the outcome. Sign-in still runs as
+   * always; only the picker is skipped, with the site chosen last in this tab. A missing or
+   * unreadable entry just leaves the picker in place.
+   */
+  private static _restoreSiteForSaasReturn(): ISharePointSite | undefined {
+    if (typeof window === 'undefined' || !isSaasReturnFragment(window.location.hash)) {
+      return undefined;
+    }
+
+    let site: ISharePointSite | undefined;
+    XsProject._withSessionStorage((storage: Storage): void => {
+      const parsed: Partial<ISharePointSite> | null = JSON.parse(storage.getItem(LAST_SITE_STORAGE_KEY) || 'null');
+      if (parsed && typeof parsed.url === 'string' && parsed.url && typeof parsed.title === 'string') {
+        site = { title: parsed.title, url: parsed.url, siteId: typeof parsed.siteId === 'string' ? parsed.siteId : '' };
+      }
+    });
+
+    return site;
+  }
+
+  /** Runs `action` against sessionStorage; storage that is unavailable or throws is ignored. */
+  private static _withSessionStorage(action: (storage: Storage) => void): void {
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        action(window.sessionStorage);
+      }
+    } catch {
+      // Remembering the site is a convenience; the picker still works without it.
+    }
+  }
 
   /**
    * Sends the user back to the picker.

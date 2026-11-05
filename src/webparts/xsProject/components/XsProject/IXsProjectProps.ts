@@ -3,6 +3,7 @@ import { ILoginService } from '../../../../services/LoginService';
 import { ILookupService } from '../../../../services/LookupService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
+import { ISaasService } from '../../../../services/SaasService';
 import { ISharePointSiteService } from '../../../../services/SharePointSiteService';
 
 export interface IXsProjectProps {
@@ -35,4 +36,9 @@ export interface IXsProjectProps {
    * choose between after signing in.
    */
   sharePointSiteService: ISharePointSiteService;
+  /**
+   * Marketplace SaaS entitlements and purchases, passed down to the Subscription page and
+   * to every `FeatureGate`.
+   */
+  saasService: ISaasService;
 }

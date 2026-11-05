@@ -27,7 +27,7 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 import { act } from 'react-dom/test-utils';
 
-import XsProject from './XsProject';
+import XsProject, { LAST_SITE_STORAGE_KEY } from './XsProject';
 import { UserRole } from '../../../../models/Permissions';
 import type { ILoginResponse, ISPFxLoginRequest } from '../../../../models/Auth';
 import type { ISharePointSite } from '../../../../models/SharePointSite';
@@ -37,6 +37,8 @@ import type { ILookupService } from '../../../../services/LookupService';
 import type { IProjectListingService } from '../../../../services/ProjectListingService';
 import type { IProjectService } from '../../../../services/ProjectService';
 import type { ISharePointSiteService } from '../../../../services/SharePointSiteService';
+import type { ISaasService } from '../../../../services/SaasService';
+import type { ISaasEntitlements } from '../../../../models/Saas';
 import type { IBuildingForm, ILookupOption } from '../../../../models/Building';
 import type {
   IBuildingDetails,
@@ -264,6 +266,58 @@ function flakySiteService(): ISharePointSiteService {
   };
 }
 
+/**
+ * A tenant entitled to every service, so the paid sections of the project form render as
+ * they did before they were gated. The gating itself is covered by `FeatureGate.test.tsx`
+ * and `ProjectAddEdit.test.tsx`.
+ */
+function stubSaasService(): ISaasService {
+  const entitlements: ISaasEntitlements = {
+    tenantKnown: true,
+    entraTenantId: 'tenant',
+    isTenantAdmin: true,
+    isBillingEnforced: false,
+    services: ['ED_CONTROL', 'KYP', 'MINUTES', 'TENDER'],
+    features: ['EDCONTROL.CORE', 'KYP.CORE', 'MINUTES.CORE', 'TENDER.CORE'],
+    details: [],
+    cacheSeconds: 300,
+    evaluatedOn: '2026-11-04T00:00:00Z'
+  };
+
+  return {
+    getEntitlements: async () => entitlements,
+    getCatalog: async () => ({ services: [] }),
+    getSubscriptions: async () => [],
+    createPurchaseIntent: async () => {
+      throw new Error('not expected');
+    },
+    // The return from a Marketplace purchase activates it; see the "reopens the last site" tests.
+    activateSubscription: async (marketplaceSubscriptionId: string) => ({
+      state: 'Activated',
+      subscription: {
+        marketplaceSubscriptionId,
+        subscriptionName: 'XSProject Tender',
+        offerId: 'xs-tender',
+        planId: 'monthly',
+        planName: 'Monthly',
+        quantity: null,
+        status: 'Subscribed',
+        services: ['TENDER'],
+        termStart: null,
+        termEnd: null,
+        termUnit: null,
+        autoRenew: true,
+        isFreeTrial: false
+      },
+      services: ['TENDER'],
+      entitlements,
+      message: 'Activated.',
+      correlationId: 'corr-1'
+    }),
+    invalidate: (): void => undefined
+  };
+}
+
 function stubServices(
   userRoleId: number,
   domainGroup: number,
@@ -275,6 +329,7 @@ function stubServices(
   buildingService: IBuildingService;
   lookupService: ILookupService;
   sharePointSiteService: ISharePointSiteService;
+  saasService: ISaasService;
 } {
   const response: ILoginResponse = loginResponse(userRoleId, domainGroup);
   const store: IFakeProject[] = createProjectStore();
@@ -284,6 +339,7 @@ function stubServices(
     projectListingService: stubListingService(store),
     buildingService: stubBuildingService(store),
     sharePointSiteService: siteService || stubSiteService(),
+    saasService: stubSaasService(),
     loginService: {
       login: async (_request: ISPFxLoginRequest) => response,
       loginAsCurrentUser: async () => response
@@ -301,6 +357,7 @@ describe('XsProject', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     window.location.hash = '';
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -334,6 +391,7 @@ describe('XsProject', () => {
           lookupService={services.lookupService}
           loginService={services.loginService}
           sharePointSiteService={services.sharePointSiteService}
+          saasService={services.saasService}
         />,
         host
       );
@@ -682,5 +740,48 @@ describe('XsProject', () => {
     // ...but the form gate does not, matching the reference's `return View("Error")`.
     expect(host.textContent).toContain('does not have permission');
     expect(host.querySelector('#project-buildingName')).toBeNull();
+  });
+
+  it('remembers the chosen site for this tab', async () => {
+    await mount();
+
+    expect(JSON.parse(window.sessionStorage.getItem(LAST_SITE_STORAGE_KEY) || '{}')).toEqual(SITES[0]);
+  });
+
+  it('reopens the last site on the return from a Marketplace purchase', async () => {
+    // The purchase was started after choosing a site in this tab, and the landing page
+    // sends the buyer back to a freshly loaded page.
+    window.sessionStorage.setItem(LAST_SITE_STORAGE_KEY, JSON.stringify(SITES[0]));
+    window.location.hash = '#/subscription?saas=returned&service=TENDER&subscriptionId=0f8fad5b-d9cb-469f-a165-70867728950e';
+    await renderApp();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Sign-in ran again, but the picker is skipped: the Subscription page shows the return.
+    expect(host.querySelector('#sharepoint-site')).toBeNull();
+    expect(host.textContent).toContain('Site: Construction');
+    expect(host.querySelector('[data-banner]')).not.toBeNull();
+  });
+
+  it('keeps the return route through the site picker when no site was chosen in this tab', async () => {
+    window.location.hash = '#/subscription?saas=returned&service=TENDER&subscriptionId=0f8fad5b-d9cb-469f-a165-70867728950e';
+    await renderApp();
+
+    expect(host.querySelector('#sharepoint-site')).not.toBeNull();
+
+    await chooseSite();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-banner]')).not.toBeNull();
+  });
+
+  it('does not skip the picker on an ordinary load', async () => {
+    window.sessionStorage.setItem(LAST_SITE_STORAGE_KEY, JSON.stringify(SITES[0]));
+    await renderApp();
+
+    expect(host.querySelector('#sharepoint-site')).not.toBeNull();
   });
 });

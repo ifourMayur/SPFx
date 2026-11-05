@@ -24,7 +24,8 @@ export const ROUTE_PATHS = {
   projectDashboard: '/dashboard',
   projectDocument: '/document',
   search: '/search',
-  suppliers: '/suppliers'
+  suppliers: '/suppliers',
+  subscription: '/subscription'
 } as const;
 
 /** A path this app routes. */
@@ -39,6 +40,17 @@ export const DEFAULT_ROUTE_PATH: string = ROUTE_PATHS.projectDashboard;
 /** The edit route for one project, e.g. `projectEditPath(12)` -> `/projects/edit/12`. */
 export function projectEditPath(projectId: number): string {
   return `${ROUTE_PATHS.projectList}/edit/${projectId}`;
+}
+
+/**
+ * The Subscription page, optionally opened on one service - e.g.
+ * `subscriptionPath('TENDER')` -> `/subscription?service=TENDER`. A locked `FeatureGate`
+ * sends admins here, so the page can point at the service they asked to enable.
+ */
+export function subscriptionPath(serviceKey?: string): string {
+  return serviceKey
+    ? `${ROUTE_PATHS.subscription}?service=${encodeURIComponent(serviceKey)}`
+    : ROUTE_PATHS.subscription;
 }
 
 /**

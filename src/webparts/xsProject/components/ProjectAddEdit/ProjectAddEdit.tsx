@@ -3,6 +3,7 @@ import * as React from 'react';
 import styles from './ProjectAddEdit.module.scss';
 import type { IProjectAddEditProps } from './IProjectAddEditProps';
 import type { IProjectAddEditState } from './IProjectAddEditState';
+import FeatureGate from '../FeatureGate/FeatureGate';
 import FolderCascade from '../FolderCascade/FolderCascade';
 import MultiSelect from '../MultiSelect/MultiSelect';
 import {
@@ -21,6 +22,7 @@ import {
   createEmptyFolderLevelOptions
 } from '../../../../models/FolderTree';
 import { getErrorMessage } from '../../../../models/ApiError';
+import { SAAS_FEATURE_KEYS, SAAS_SERVICE_KEYS } from '../../../../models/Saas';
 
 /**
  * Keys of `IBuildingForm` whose value is a `string`, so one handler can serve them all.
@@ -67,6 +69,13 @@ const IMAGE_MESSAGES = {
  * are third-party integration features, out of scope for the core project form. The
  * SharePoint Site URL field is out of scope for the same reason - the reference only shows
  * it when server-side SharePoint credentials are configured, which the browser cannot see.
+ *
+ * Tender and Minutes of Meeting are paid Marketplace services, so both sections render
+ * through a `FeatureGate` (`TENDER.CORE`, `MINUTES.CORE`): their headings stay, and their
+ * controls are replaced by a locked panel when the tenant is not entitled. Only the
+ * controls are hidden - the form values are left as they are, so an edit never silently
+ * switches off a tender the project already has. The Web API enforces the entitlement on
+ * the Tender/MOM endpoints themselves.
  *
  * Every dropdown is bound to the same Web API endpoint the reference binds it to, through
  * `ILookupService` - see that interface for the endpoint-by-dropdown table. They are
@@ -468,38 +477,46 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
           <div className={styles.sectionLabel}>Tender</div>
           <hr className={styles.sectionRule} />
 
-          <div className={styles.toggleRow}>
-            {this._renderToggle('isEnableTender', 'Tender')}
-          </div>
-
-          {/* Revealed by the toggle, exactly as `getTenderTemplate()` shows/hides it. */}
-          {form.isEnableTender && (
-            <div className={styles.tenderField}>
-              <label className={styles.label} htmlFor="project-tenderTemplateId">
-                Tender Templates <span className={styles.required} aria-hidden="true">*</span>
-              </label>
-              <select
-                id="project-tenderTemplateId"
-                className={`${styles.input} ${errors.tenderTemplateId ? styles.inputInvalid : ''}`}
-                value={form.tenderTemplateId}
-                disabled={this.state.isSaving}
-                aria-invalid={!!errors.tenderTemplateId}
-                data-field="tenderTemplateId"
-                onChange={this._onFieldChange}
-              >
-                <option value="">Select tender template</option>
-                {this.state.lookups.tenderTemplates.map(ProjectAddEdit._renderOption)}
-              </select>
-              {errors.tenderTemplateId && (
-                <span className={styles.fieldError} role="alert">{errors.tenderTemplateId}</span>
-              )}
-              {this.state.lookups.tenderTemplates.length === 0 && (
-                <span className={styles.emptyHint}>
-                  The Web API returned no tender templates.
-                </span>
-              )}
+          <FeatureGate
+            saasService={this.props.saasService}
+            featureKey={SAAS_FEATURE_KEYS.tender}
+            serviceKey={SAAS_SERVICE_KEYS.tender}
+            serviceName="Tender"
+            onEnableService={this.props.onOpenSubscription}
+          >
+            <div className={styles.toggleRow}>
+              {this._renderToggle('isEnableTender', 'Tender')}
             </div>
-          )}
+
+            {/* Revealed by the toggle, exactly as `getTenderTemplate()` shows/hides it. */}
+            {form.isEnableTender && (
+              <div className={styles.tenderField}>
+                <label className={styles.label} htmlFor="project-tenderTemplateId">
+                  Tender Templates <span className={styles.required} aria-hidden="true">*</span>
+                </label>
+                <select
+                  id="project-tenderTemplateId"
+                  className={`${styles.input} ${errors.tenderTemplateId ? styles.inputInvalid : ''}`}
+                  value={form.tenderTemplateId}
+                  disabled={this.state.isSaving}
+                  aria-invalid={!!errors.tenderTemplateId}
+                  data-field="tenderTemplateId"
+                  onChange={this._onFieldChange}
+                >
+                  <option value="">Select tender template</option>
+                  {this.state.lookups.tenderTemplates.map(ProjectAddEdit._renderOption)}
+                </select>
+                {errors.tenderTemplateId && (
+                  <span className={styles.fieldError} role="alert">{errors.tenderTemplateId}</span>
+                )}
+                {this.state.lookups.tenderTemplates.length === 0 && (
+                  <span className={styles.emptyHint}>
+                    The Web API returned no tender templates.
+                  </span>
+                )}
+              </div>
+            )}
+          </FeatureGate>
         </div>
       </div>
     );
@@ -513,24 +530,32 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
         <div className={styles.sectionLabel}>Minutes of Meeting</div>
         <hr className={styles.sectionRule} />
 
-        <div className={styles.toggleRow}>
-          {this._renderToggle('isAddMomPdf', 'Save minutes in this folder')}
-        </div>
+        <FeatureGate
+          saasService={this.props.saasService}
+          featureKey={SAAS_FEATURE_KEYS.minutes}
+          serviceKey={SAAS_SERVICE_KEYS.minutes}
+          serviceName="Minutes of Meeting"
+          onEnableService={this.props.onOpenSubscription}
+        >
+          <div className={styles.toggleRow}>
+            {this._renderToggle('isAddMomPdf', 'Save minutes in this folder')}
+          </div>
 
-        {/* Hidden until the toggle is on, matching `#formMomBinding`'s initial state. */}
-        {form.isAddMomPdf && (
-          <FolderCascade
-            idPrefix="project-mom"
-            options={this.state.folderOptions}
-            suppliers={this.state.lookups.suppliers}
-            value={form.momFolder}
-            isGrandChildFolderEnabled={this.props.features.isGrandChildFolderEnabled}
-            loadingLevels={this.state.loadingFolderLevels}
-            isDisabled={this.state.isSaving}
-            onChange={this._onMomFolderChange}
-            onSupplierChange={this._onMomSupplierChange}
-          />
-        )}
+          {/* Hidden until the toggle is on, matching `#formMomBinding`'s initial state. */}
+          {form.isAddMomPdf && (
+            <FolderCascade
+              idPrefix="project-mom"
+              options={this.state.folderOptions}
+              suppliers={this.state.lookups.suppliers}
+              value={form.momFolder}
+              isGrandChildFolderEnabled={this.props.features.isGrandChildFolderEnabled}
+              loadingLevels={this.state.loadingFolderLevels}
+              isDisabled={this.state.isSaving}
+              onChange={this._onMomFolderChange}
+              onSupplierChange={this._onMomSupplierChange}
+            />
+          )}
+        </FeatureGate>
       </div>
     );
   }

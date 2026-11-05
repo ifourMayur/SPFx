@@ -48,7 +48,8 @@ const ENDPOINTS: IApiEndpoints = {
   suppliers: 'Issuer',
   document: 'Document',
   dashboard: 'Dashboard',
-  folder: 'Folder'
+  folder: 'Folder',
+  saas: 'saas'
 };
 
 /**

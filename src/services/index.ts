@@ -15,6 +15,7 @@ export * from './LookupService';
 export * from './ProjectListingService';
 export * from './ProjectService';
 export * from './ProjectTemplateService';
+export * from './SaasService';
 export * from './SharePointFolderService';
 export * from './ServiceFactory';
 export * from './SharePointHttpClient';

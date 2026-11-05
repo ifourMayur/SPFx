@@ -39,6 +39,13 @@ export interface IApiEndpoints {
    * phase columns.
    */
   readonly folder: string;
+  /**
+   * The SaaS subscription controller (`api/saas`): `entitlements`, `catalog`,
+   * `subscriptions` and `purchase-intents` hang off it. Unlike every route above, its
+   * actions are **not** wrapped in the `ResponseDetail` envelope - success is a 2xx with
+   * the DTO as the body, failure a non-2xx with `{ code, message, correlationId }`.
+   */
+  readonly saas: string;
 }
 
 /** Everything the API layer needs to talk to the Web API in a given environment. */

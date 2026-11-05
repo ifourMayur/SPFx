@@ -4,7 +4,8 @@
  * These cover what a successful TypeScript build cannot: that the form actually mounts,
  * that its dropdowns are filled from the lookup service rather than from anything
  * hard-coded, that validation messages reach the DOM, that the excluded integration
- * sections really are absent, and that the permission refusal and the load-failure state
+ * sections really are absent, that the paid Tender and Minutes of Meeting sections follow
+ * the tenant's entitlements, and that the permission refusal and the load-failure state
  * render instead of the form.
  *
  * `react-dom/test-utils` and the jsdom environment are already available, so this needs
@@ -17,7 +18,10 @@ import { HashRouter } from 'react-router-dom';
 
 import ProjectAddEditRoute from './ProjectAddEditRoute';
 import { IBuildingForm, ILookupOption } from '../../../../models/Building';
+import { ApiError } from '../../../../models/ApiError';
+import { ISaasEntitlements, ISaasServiceStatus } from '../../../../models/Saas';
 import { ILookupService } from '../../../../services/LookupService';
+import { ISaasService } from '../../../../services/SaasService';
 
 /** Options the stub service hands back, so assertions can look for real names. */
 const STUB = {
@@ -50,6 +54,66 @@ function stubLookupService(overrides?: Partial<ILookupService>): ILookupService 
   };
 }
 
+/** Every feature the form gates on. */
+const ALL_FEATURES: string[] = ['TENDER.CORE', 'MINUTES.CORE'];
+
+/** A service status as `GET saas/entitlements` reports it. */
+function serviceStatus(serviceKey: string, name: string, status: string): ISaasServiceStatus {
+  return {
+    serviceKey,
+    name,
+    description: null,
+    status,
+    source: null,
+    validTo: null,
+    termEnd: null,
+    isFreeTrial: false,
+    autoRenew: null,
+    canPurchase: status === 'NotPurchased',
+    marketplaceSubscriptionId: null
+  };
+}
+
+/** An entitlements service answering `features` (or failing with `failure`). */
+function stubSaasService(
+  features: string[] = ALL_FEATURES,
+  isTenantAdmin: boolean = false,
+  failure?: Error
+): ISaasService {
+  const entitlements: ISaasEntitlements = {
+    tenantKnown: true,
+    entraTenantId: 'tenant',
+    isTenantAdmin,
+    isBillingEnforced: true,
+    services: [],
+    features,
+    details: [
+      serviceStatus('TENDER', 'Tender', features.indexOf('TENDER.CORE') >= 0 ? 'Active' : 'NotPurchased'),
+      serviceStatus('MINUTES', 'Minutes of Meeting', features.indexOf('MINUTES.CORE') >= 0 ? 'Active' : 'NotPurchased')
+    ],
+    cacheSeconds: 300,
+    evaluatedOn: '2026-11-04T00:00:00Z'
+  };
+
+  return {
+    getEntitlements: async (): Promise<ISaasEntitlements> => {
+      if (failure) {
+        throw failure;
+      }
+      return entitlements;
+    },
+    getCatalog: async () => ({ services: [] }),
+    getSubscriptions: async () => [],
+    createPurchaseIntent: async () => {
+      throw new Error('not expected');
+    },
+    activateSubscription: async () => {
+      throw new Error('not expected');
+    },
+    invalidate: (): void => undefined
+  };
+}
+
 describe('ProjectAddEdit', () => {
   let host: HTMLDivElement;
 
@@ -67,13 +131,17 @@ describe('ProjectAddEdit', () => {
   async function renderAddForm(
     onSave: (form: IBuildingForm) => Promise<void>,
     lookupService: ILookupService = stubLookupService(),
-    canSave: boolean = true
+    canSave: boolean = true,
+    saasService: ISaasService = stubSaasService(),
+    onOpenSubscription?: (serviceKey: string) => void
   ): Promise<void> {
     await act(async () => {
       ReactDOM.render(
         <HashRouter>
           <ProjectAddEditRoute
             lookupService={lookupService}
+            saasService={saasService}
+            onOpenSubscription={onOpenSubscription}
             mode="add"
             projectNames={{}}
             savedForms={{}}
@@ -384,6 +452,76 @@ describe('ProjectAddEdit', () => {
     await clickText('Try again');
 
     expect(host.querySelector('#project-buildingName')).not.toBeNull();
+  });
+
+  describe('paid sections', () => {
+    it('shows the Tender and MOM controls to an entitled tenant', async () => {
+      await renderAddForm(async () => undefined);
+
+      expect(host.querySelector('input[data-field="isEnableTender"]')).not.toBeNull();
+      expect(host.querySelector('input[data-field="isAddMomPdf"]')).not.toBeNull();
+      expect(host.querySelector('[data-feature-gate]')).toBeNull();
+    });
+
+    it('locks both sections for a tenant without them and tells a non-admin to ask an admin', async () => {
+      await renderAddForm(async () => undefined, stubLookupService(), true, stubSaasService([], false));
+
+      expect(host.querySelector('input[data-field="isEnableTender"]')).toBeNull();
+      expect(host.querySelector('input[data-field="isAddMomPdf"]')).toBeNull();
+      // The headings stay, so the user can see what exists.
+      expect(host.textContent).toContain('Minutes of Meeting');
+      expect(host.textContent).toContain('Contact your administrator to enable Tender.');
+      expect(host.textContent).toContain('Contact your administrator to enable Minutes of Meeting.');
+      expect(host.textContent).not.toContain('Enable Tender');
+      // The rest of the form is unaffected.
+      expect(host.querySelector('#project-buildingName')).not.toBeNull();
+    });
+
+    it('gates each section on its own feature key', async () => {
+      await renderAddForm(async () => undefined, stubLookupService(), true, stubSaasService(['MINUTES.CORE']));
+
+      expect(host.querySelector('input[data-field="isEnableTender"]')).toBeNull();
+      expect(host.querySelector('input[data-field="isAddMomPdf"]')).not.toBeNull();
+    });
+
+    it('offers an admin "Enable Tender", which opens the Subscription page without submitting', async () => {
+      const opened: string[] = [];
+      const saved: IBuildingForm[] = [];
+
+      await renderAddForm(
+        async (form: IBuildingForm): Promise<void> => {
+          saved.push(form);
+        },
+        stubLookupService(),
+        true,
+        stubSaasService(['MINUTES.CORE'], true),
+        (serviceKey: string): void => {
+          opened.push(serviceKey);
+        }
+      );
+
+      expect(host.textContent).not.toContain('Contact your administrator');
+      await clickText('Enable Tender');
+
+      expect(opened).toEqual(['TENDER']);
+      expect(saved).toHaveLength(0);
+    });
+
+    it('hides the paid sections, says why and offers a retry when the check fails', async () => {
+      const unreachable: ApiError = new ApiError('Unable to reach the Web API.', { status: 0 });
+
+      await renderAddForm(
+        async () => undefined,
+        stubLookupService(),
+        true,
+        stubSaasService(ALL_FEATURES, true, unreachable)
+      );
+
+      expect(host.querySelector('input[data-field="isEnableTender"]')).toBeNull();
+      expect(host.querySelector('input[data-field="isAddMomPdf"]')).toBeNull();
+      expect(host.textContent).toContain("We couldn't check your subscription, so Tender is hidden for now.");
+      expect(host.textContent).toContain('Retry');
+    });
   });
 
   it('refuses the form to a role that may not open it', async () => {

@@ -21,5 +21,6 @@ export * from './Project';
 export * from './ProjectListing';
 export * from './DocumentStorage';
 export * from './ProjectTemplateFolder';
+export * from './Saas';
 export * from './SharePointFolder';
 export * from './SharePointSite';

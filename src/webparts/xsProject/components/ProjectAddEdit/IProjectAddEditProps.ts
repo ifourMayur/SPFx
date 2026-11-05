@@ -1,5 +1,6 @@
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { ILookupService } from '../../../../services/LookupService';
+import { ISaasService } from '../../../../services/SaasService';
 
 export interface IProjectAddEditProps {
   /**
@@ -9,6 +10,16 @@ export interface IProjectAddEditProps {
    * be rendered against a stub in tests.
    */
   lookupService: ILookupService;
+  /**
+   * Marketplace SaaS entitlements. The Tender and Minutes of Meeting sections are paid
+   * services (`TENDER.CORE`, `MINUTES.CORE`) and render through a `FeatureGate`.
+   */
+  saasService: ISaasService;
+  /**
+   * Opens the Subscription page on a service, offered to admins by a locked section.
+   * Absent, the locked section explains but offers no button.
+   */
+  onOpenSubscription?: (serviceKey: string) => void;
   /**
    * Project being edited. `undefined` (no `:id` in the route) means add mode, which is
    * what switches the Reset button on and unlocks the Project Template dropdown.

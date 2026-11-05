@@ -7,6 +7,17 @@ export interface IApiErrorDetails {
   statusText?: string;
   url?: string;
   problemDetails?: IProblemDetails;
+  /**
+   * Stable machine-readable reason, from endpoints that answer failures as
+   * `{ code, message, correlationId }` (the `api/saas` controllers) - e.g.
+   * `SAAS_NOT_TENANT_ADMIN`. Absent for every other endpoint.
+   */
+  code?: string;
+  /**
+   * The server's reference for this failure (`HttpContext.TraceIdentifier`), also written
+   * to its log line. Safe to show the user so support can find the request.
+   */
+  correlationId?: string;
 }
 
 /**
@@ -20,6 +31,8 @@ export class ApiError extends Error {
   public readonly statusText: string | undefined;
   public readonly url: string | undefined;
   public readonly problemDetails: IProblemDetails | undefined;
+  public readonly code: string | undefined;
+  public readonly correlationId: string | undefined;
 
   public constructor(message: string, details: IApiErrorDetails) {
     super(message);
@@ -29,6 +42,8 @@ export class ApiError extends Error {
     this.statusText = details.statusText;
     this.url = details.url;
     this.problemDetails = details.problemDetails;
+    this.code = details.code;
+    this.correlationId = details.correlationId;
 
     // The compiler targets ES5, where extending a built-in breaks the prototype
     // chain. Restoring it keeps `instanceof ApiError` working at runtime.

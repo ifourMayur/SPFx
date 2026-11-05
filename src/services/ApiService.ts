@@ -383,8 +383,22 @@ export class ApiService implements IApiService {
       status: response.status,
       statusText: response.statusText,
       url,
-      problemDetails
+      problemDetails,
+      // The `api/saas` endpoints answer `{ code, message, correlationId }`; `message` is
+      // already read above through `problemDetails`, the other two are kept as they are.
+      code: ApiService._readText(payload, 'code'),
+      correlationId: ApiService._readText(payload, 'correlationId')
     });
+  }
+
+  /** A non-empty string property of a JSON object body, or `undefined`. */
+  private static _readText(payload: unknown, name: string): string | undefined {
+    if (typeof payload !== 'object' || payload === null) {
+      return undefined;
+    }
+
+    const value: unknown = (payload as Record<string, unknown>)[name];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
   }
 
   private _toProblemDetails(payload: unknown): IProblemDetails | undefined {

@@ -24,7 +24,10 @@ const MENU_ITEMS: IMenuItem[] = [
     ]
   },
   { key: 'search', label: 'Search', path: ROUTE_PATHS.search },
-  { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers }
+  { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers },
+  // Shown to everyone: non-admins see their organisation's services read-only, and the
+  // server decides who may buy.
+  { key: 'subscription', label: 'Subscription', path: ROUTE_PATHS.subscription }
 ];
 
 /**

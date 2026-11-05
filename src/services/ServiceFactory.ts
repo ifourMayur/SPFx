@@ -13,6 +13,7 @@ import { IProjectService, ProjectService } from './ProjectService';
 import { DocumentStorageService, IDocumentStorageService } from './DocumentStorageService';
 import { IProjectTemplateService, ProjectTemplateService } from './ProjectTemplateService';
 import { ISharePointFolderService, SharePointFolderService } from './SharePointFolderService';
+import { ISaasService, SaasService } from './SaasService';
 import { ISpHttpClient, SpRestHttpClient } from './SharePointHttpClient';
 import { ISharePointSiteService, SharePointSiteService } from './SharePointSiteService';
 
@@ -43,6 +44,11 @@ export interface IServiceContainer {
    * from the XSProject Web API.
    */
   readonly sharePointSiteService: ISharePointSiteService;
+  /**
+   * Microsoft Marketplace SaaS subscriptions (`api/saas`): the tenant's entitlements that
+   * `FeatureGate` and the Subscription page read, the catalog, and starting a purchase.
+   */
+  readonly saasService: ISaasService;
 }
 
 /**
@@ -150,8 +156,23 @@ export class ServiceFactory {
       sharePointSiteService: new SharePointSiteService(
         spHttpClient,
         ServiceFactory._resolveWebUrl(context)
-      )
+      ),
+      saasService: new SaasService(apiService, getEnvironment().api.endpoints.saas, {
+        cacheScope: ServiceFactory._resolveCacheScope(context)
+      })
     };
+  }
+
+  /**
+   * Who the cached entitlements belong to: the Entra tenant and the signed-in user. The
+   * answer carries `isTenantAdmin`, which is per user, so neither may be left out. Read
+   * from the page context for the cache key only - the server never trusts it.
+   */
+  private static _resolveCacheScope(context: BaseComponentContext): string {
+    const tenantId: string = context.pageContext?.aadInfo?.tenantId?.toString() || '';
+    const user: string = context.pageContext?.user?.loginName || '';
+
+    return `${tenantId}|${user}`.toLowerCase();
   }
 
   /**

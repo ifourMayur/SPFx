@@ -1,0 +1,250 @@
+/*
+ * The Subscription page. Like every page root it fills what it is handed (see "Layout and
+ * styling" in CLAUDE.md): no width cap, no centring.
+ */
+.subscription {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+  font-size: 14px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 600;
+}
+
+.intro {
+  margin: 0.5em 0 1em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1.5em 0;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: subscriptionSpin 0.8s linear infinite;
+}
+
+@keyframes subscriptionSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.notice {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:themePrimary, default: #0078d4]";
+  background-color: "[theme:themeLighterAlt, default: #eff6fc]";
+}
+
+.adminNote {
+  margin: 0 0 1em;
+}
+
+.errorBox {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:redDark, default: #a4262c]";
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+}
+
+.errorTitle {
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}
+
+.errorMessage {
+  margin: 0 0 0.4em;
+  color: "[theme:redDark, default: #a4262c]";
+}
+
+.reference {
+  margin: 0 0 0.5em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.875em;
+}
+
+.banner {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid currentColor;
+
+  p {
+    margin: 0 0 0.5em;
+  }
+}
+
+.bannerTitle {
+  font-weight: 600;
+}
+
+/* A banner reporting a call still running: spinner and text on one line. */
+.bannerBusy {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+}
+
+.subscriptions {
+  margin-top: 1.5em;
+}
+
+.sectionTitle {
+  margin: 0 0 0.75em;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+.highlighted {
+  border-color: "[theme:themePrimary, default: #0078d4]";
+  box-shadow: 0 0 0 1px "[theme:themePrimary, default: #0078d4]";
+}
+
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.serviceName {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.badge,
+.trial {
+  padding: 0.1em 0.6em;
+  border-radius: 10px;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.trial {
+  background-color: "[theme:themeLighter, default: #deecf9]";
+  color: "[theme:themeDarker, default: #004578]";
+}
+
+.description {
+  margin: 0 0 0.5em;
+}
+
+.meta {
+  margin: 0 0 0.5em;
+  padding: 0;
+  list-style: none;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.9em;
+}
+
+.message {
+  margin: 0 0 0.75em;
+  padding: 0.5em 0.75em;
+  border-radius: 2px;
+}
+
+.plans {
+  margin: 0 0 0.75em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.9em;
+}
+
+/* Status tones, shared by badges, messages and banners - Fluent's semantic message slots. */
+.toneSuccess {
+  background-color: "[theme:successBackground, default: #dff6dd]";
+  color: "[theme:greenDark, default: #0b6a0b]";
+}
+
+.toneWarning {
+  background-color: "[theme:warningBackground, default: #fff4ce]";
+  color: "[theme:messageText, default: #323130]";
+}
+
+.toneError {
+  background-color: "[theme:errorBackground, default: #fde7e9]";
+  color: "[theme:errorText, default: #a4262c]";
+}
+
+.toneNeutral {
+  background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  color: "[theme:neutralPrimary, default: #323130]";
+}
+
+.primaryButton,
+.secondaryButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.primaryButton {
+  border: 1px solid transparent;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+}
+
+.secondaryButton {
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+}

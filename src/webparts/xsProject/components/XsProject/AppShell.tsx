@@ -9,18 +9,25 @@ import ProjectAddEditRoute from '../ProjectAddEdit/ProjectAddEditRoute';
 import Document from '../Document/Document';
 import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
+import SubscriptionRoute from '../Subscription/SubscriptionRoute';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
-import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath } from '../../../../models/Navigation';
+import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath, subscriptionPath } from '../../../../models/Navigation';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
+import { ISaasService } from '../../../../services/SaasService';
 
 export interface IAppShellProps {
   projectService: IProjectService;
   /** The paged read behind the overview table, handed straight to `ProjectList`. */
   projectListingService: IProjectListingService;
   lookupService: ILookupService;
+  /**
+   * Marketplace SaaS entitlements: read by the Subscription page and by every
+   * `FeatureGate` (today the Tender and Minutes of Meeting sections of the project form).
+   */
+  saasService: ISaasService;
   /**
    * Names of the projects seen on the listing this session, keyed by id.
    *
@@ -81,6 +88,14 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
     navigate(ROUTE_PATHS.projectAdd);
   }, [navigate]);
 
+  // Where a locked `FeatureGate` sends an admin: the Subscription page, on that service.
+  const goToSubscription = React.useCallback(
+    (serviceKey: string): void => {
+      navigate(subscriptionPath(serviceKey));
+    },
+    [navigate]
+  );
+
   const goToEdit = React.useCallback(
     (projectId: number): void => {
       navigate(projectEditPath(projectId));
@@ -106,6 +121,8 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
   const form = (mode: 'add' | 'edit'): React.ReactElement => (
     <ProjectAddEditRoute
       lookupService={props.lookupService}
+      saasService={props.saasService}
+      onOpenSubscription={goToSubscription}
       mode={mode}
       projectNames={props.projectNames}
       savedForms={props.savedForms}
@@ -142,6 +159,7 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
           <Route path={ROUTE_PATHS.projectDocument} element={<Document />} />
           <Route path={ROUTE_PATHS.search} element={<Search />} />
           <Route path={ROUTE_PATHS.suppliers} element={<Suppliers />} />
+          <Route path={ROUTE_PATHS.subscription} element={<SubscriptionRoute saasService={props.saasService} />} />
           {/* `/` and anything unrecognised land on the view the web part opened on
               before it had routes. `replace` keeps the bad path out of history. */}
           <Route path="*" element={<Navigate to={DEFAULT_ROUTE_PATH} replace />} />

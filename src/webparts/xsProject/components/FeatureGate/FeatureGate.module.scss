@@ -1,0 +1,74 @@
+/*
+ * The locked / checking states of a gated feature. Sized to sit where the feature would
+ * have been - a form section or a whole page - so it fills its container and caps nothing.
+ */
+.checking {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.75em 0;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: featureGateSpin 0.8s linear infinite;
+}
+
+@keyframes featureGateSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.locked {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0.5em 0;
+  padding: 0.75em 1em;
+  border: 1px dashed "[theme:neutralTertiaryAlt, default: #c8c6c4]";
+  border-radius: 2px;
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  color: "[theme:bodyText, default: #323130]";
+}
+
+.lockedTitle {
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}
+
+.lockIcon {
+  margin-right: 0.4em;
+}
+
+.detail {
+  margin: 0 0 0.5em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.reference {
+  margin: 0 0 0.5em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.875em;
+}
+
+.button {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+}

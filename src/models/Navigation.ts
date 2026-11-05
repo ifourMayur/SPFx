@@ -21,11 +21,13 @@ export const ROUTE_PATHS = {
   projectList: '/projects',
   projectAdd: '/projects/add',
   projectEdit: '/projects/edit/:id',
+  projectAudits: '/projects/audits/:id',
   projectDashboard: '/dashboard',
   projectDocument: '/document',
   search: '/search',
   suppliers: '/suppliers',
-  subscription: '/subscription'
+  subscription: '/subscription',
+  ticketsPlanning: '/tickets-planning'
 } as const;
 
 /** A path this app routes. */
@@ -40,6 +42,11 @@ export const DEFAULT_ROUTE_PATH: string = ROUTE_PATHS.projectDashboard;
 /** The edit route for one project, e.g. `projectEditPath(12)` -> `/projects/edit/12`. */
 export function projectEditPath(projectId: number): string {
   return `${ROUTE_PATHS.projectList}/edit/${projectId}`;
+}
+
+/** The Audits page of one project, e.g. `projectAuditsPath(12)` -> `/projects/audits/12`. */
+export function projectAuditsPath(projectId: number): string {
+  return `${ROUTE_PATHS.projectList}/audits/${projectId}`;
 }
 
 /**

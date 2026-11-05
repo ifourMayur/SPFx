@@ -361,3 +361,38 @@
   font-size: 0.875em;
   font-style: italic;
 }
+
+/* ED Controls / KYP sections (`EdControlsSection`, `KypPlanningSection`). */
+.integrationSection {
+  margin-top: 0.5em;
+}
+
+/* One ED Controls tag row: `formProject panel` in the reference. */
+.tagRow {
+  margin-bottom: 0.75em;
+  padding: 0.75em 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+}
+
+.tagRowActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.75em;
+}
+
+/* The KYP token input with its Authorize button beside it. */
+.inlineControls {
+  display: flex;
+  gap: 0.5em;
+
+  .input {
+    flex: 1 1 auto;
+  }
+}

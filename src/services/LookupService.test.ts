@@ -231,6 +231,10 @@ describe('LookupService - endpoint composition', () => {
       suppliers: 'Issuer',
       dashboard: 'Dashboard',
       folder: 'RenamedFolder',
+      edControls: 'EDControls',
+      kyp: 'KYP',
+      edControlAudit: 'EDControlAudit',
+      contact: 'Contact',
       saas: 'saas'
     };
 

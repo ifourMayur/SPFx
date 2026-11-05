@@ -12,6 +12,8 @@ export * from './BuildingService';
 export * from './DocumentStorageService';
 export * from './LoginService';
 export * from './LookupService';
+export * from './ProjectIntegrationService';
+export * from './EdControlAuditService';
 export * from './ProjectListingService';
 export * from './ProjectService';
 export * from './ProjectTemplateService';

@@ -25,6 +25,9 @@ const MENU_ITEMS: IMenuItem[] = [
   },
   { key: 'search', label: 'Search', path: ROUTE_PATHS.search },
   { key: 'suppliers', label: 'Suppliers', path: ROUTE_PATHS.suppliers },
+  // The user's ED Controls tickets and KYP planning; each section shows its own locked or
+  // "not set up" state, so the entry is offered to everyone.
+  { key: 'ticketsPlanning', label: 'Tickets & Planning', path: ROUTE_PATHS.ticketsPlanning },
   // Shown to everyone: non-admins see their organisation's services read-only, and the
   // server decides who may buy.
   { key: 'subscription', label: 'Subscription', path: ROUTE_PATHS.subscription }

@@ -89,3 +89,12 @@ export function canAddEditProject(userRoleId: number | undefined): boolean {
 export function canOpenProjectForm(userRoleId: number | undefined): boolean {
   return canAddEditProject(userRoleId) && userRoleId !== UserRole.SuperAdmin;
 }
+
+/**
+ * True when the role may open a project's Audits page (add, duplicate and remove ED Controls
+ * audits): Admin, Client ("Manager") and ClientAdmin ("Assistant Manager"), the roles the
+ * reference's `BuildingController.Audits` admits. The Web API applies its own authorization.
+ */
+export function canManageAudits(userRoleId: number | undefined): boolean {
+  return userRoleId === UserRole.Admin || userRoleId === UserRole.Client || userRoleId === UserRole.ClientAdmin;
+}

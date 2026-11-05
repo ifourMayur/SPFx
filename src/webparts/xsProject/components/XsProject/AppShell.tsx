@@ -10,10 +10,14 @@ import Document from '../Document/Document';
 import Search from '../Search/Search';
 import Suppliers from '../Suppliers/Suppliers';
 import SubscriptionRoute from '../Subscription/SubscriptionRoute';
+import AuditsRoute from '../Audits/AuditsRoute';
+import TicketsPlanning from '../TicketsPlanning/TicketsPlanning';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { DEFAULT_ROUTE_PATH, ROUTE_PATHS, projectEditPath, subscriptionPath } from '../../../../models/Navigation';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
+import { IEdControlAuditService } from '../../../../services/EdControlAuditService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
 import { ISaasService } from '../../../../services/SaasService';
@@ -23,6 +27,10 @@ export interface IAppShellProps {
   /** The paged read behind the overview table, handed straight to `ProjectList`. */
   projectListingService: IProjectListingService;
   lookupService: ILookupService;
+  /** The project form's ED Controls and KYP lookups. */
+  integrationService: IProjectIntegrationService;
+  /** A project's ED Controls audits - the Audits page. */
+  edControlAuditService: IEdControlAuditService;
   /**
    * Marketplace SaaS entitlements: read by the Subscription page and by every
    * `FeatureGate` (today the Tender and Minutes of Meeting sections of the project form).
@@ -44,6 +52,8 @@ export interface IAppShellProps {
   canAddEdit: boolean;
   /** Whether this user may open the project form, from `canOpenProjectForm`. */
   canOpenForm: boolean;
+  /** Whether this user may open a project's Audits page, from `canManageAudits`. */
+  canManageAudits: boolean;
   /** `ILoginResponse.domainGroup`, which decides how the listing's cells are coloured. */
   domainGroup?: number;
   /** Save confirmation, shown by `ProjectList` as a toast. */
@@ -121,6 +131,8 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
   const form = (mode: 'add' | 'edit'): React.ReactElement => (
     <ProjectAddEditRoute
       lookupService={props.lookupService}
+      integrationService={props.integrationService}
+      canManageAudits={props.canManageAudits}
       saasService={props.saasService}
       onOpenSubscription={goToSubscription}
       mode={mode}
@@ -160,6 +172,31 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
           <Route path={ROUTE_PATHS.search} element={<Search />} />
           <Route path={ROUTE_PATHS.suppliers} element={<Suppliers />} />
           <Route path={ROUTE_PATHS.subscription} element={<SubscriptionRoute saasService={props.saasService} />} />
+          <Route
+            path={ROUTE_PATHS.projectAudits}
+            element={
+              <AuditsRoute
+                integrationService={props.integrationService}
+                auditService={props.edControlAuditService}
+                lookupService={props.lookupService}
+                saasService={props.saasService}
+                onOpenSubscription={goToSubscription}
+                isGrandChildFolderEnabled={props.features.isGrandChildFolderEnabled}
+                canManage={props.canManageAudits}
+                projectNames={props.projectNames}
+              />
+            }
+          />
+          <Route
+            path={ROUTE_PATHS.ticketsPlanning}
+            element={
+              <TicketsPlanning
+                integrationService={props.integrationService}
+                saasService={props.saasService}
+                onOpenSubscription={goToSubscription}
+              />
+            }
+          />
           {/* `/` and anything unrecognised land on the view the web part opened on
               before it had routes. `replace` keeps the bad path out of history. */}
           <Route path="*" element={<Navigate to={DEFAULT_ROUTE_PATH} replace />} />

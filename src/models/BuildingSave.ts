@@ -37,6 +37,7 @@ import { IBuildingForm, IFolderSelection } from './Building';
 // a value, so importing it back as a type keeps the runtime dependency one-way: TypeScript
 // erases the line below entirely.
 import type { IDocumentStorageResult } from './DocumentStorage';
+import { toEdControlsSaveFields, toKypSaveFields } from './ProjectIntegration';
 import { IProjectTemplateFolders } from './ProjectTemplateFolder';
 import { IFolderProvisionResult } from './SharePointFolder';
 import { ISharePointSite } from './SharePointSite';
@@ -182,9 +183,9 @@ export function toPreservedFields(details: IBuildingDetails): IPreservedProjectF
  * C# defaults (`= new List<int>()`) only apply when the key is absent from the JSON *and*
  * the property initializer runs, which is not something to rely on.
  *
- * Fields the reference posts but this screen does not edit - the ED Controls tag rows and
- * ticket source, the KYP planning fields, `SharePointSiteURL` - are absent, matching the
- * sections `ProjectAddEdit` deliberately does not port.
+ * The ED Controls and KYP fields come from their form sections when those loaded
+ * (`toEdControlsSaveFields` / `toKypSaveFields`), otherwise they are the values echoed back
+ * from the project. `SharePointSiteURL` is not posted: `ProjectAddEdit` does not port it.
  */
 export interface IBuildingSaveRequest {
   /** `0` inserts; a project id updates. */
@@ -528,7 +529,10 @@ export function toBuildingSaveRequest(
     accountId: context.accountId,
     domainName: context.domainName,
     companyName: context.companyName,
-    companyLogo: context.companyLogo
+    companyLogo: context.companyLogo,
+    // Last, so a loaded section wins over the echoed values; an unloaded one adds nothing.
+    ...toEdControlsSaveFields(form.edControls),
+    ...toKypSaveFields(form.kyp, preserved ? preserved.kypProjectAuthToken : undefined)
   };
 }
 

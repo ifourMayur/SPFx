@@ -40,6 +40,20 @@ export interface IApiEndpoints {
    */
   readonly folder: string;
   /**
+   * `EDControlsController` route; `GetProjectSettings`, `GetProjects` and `GetTags` hang off
+   * it - the project form's ED Controls section. The API calls ED Controls itself.
+   */
+  readonly edControls: string;
+  /**
+   * `KYPController` route; `GetProjectSettings` and `GetProjects` hang off it - the project
+   * form's KYP planning section. The API calls KYP itself.
+   */
+  readonly kyp: string;
+  /** `EDControlAuditController` route; `GetByProject`, `post`, `postBulk` and `delete` hang off it - the Audits page. */
+  readonly edControlAudit: string;
+  /** `ContactController` route; `GetAllContact` hangs off it - a supplier's contacts on the audit form. */
+  readonly contact: string;
+  /**
    * The SaaS subscription controller (`api/saas`): `entitlements`, `catalog`,
    * `subscriptions` and `purchase-intents` hang off it. Unlike every route above, its
    * actions are **not** wrapped in the `ResponseDetail` envelope - success is a 2xx with

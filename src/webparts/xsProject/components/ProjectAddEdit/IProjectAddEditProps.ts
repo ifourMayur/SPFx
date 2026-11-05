@@ -1,5 +1,6 @@
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
 import { ISaasService } from '../../../../services/SaasService';
 
 export interface IProjectAddEditProps {
@@ -10,6 +11,16 @@ export interface IProjectAddEditProps {
    * be rendered against a stub in tests.
    */
   lookupService: ILookupService;
+  /**
+   * ED Controls and KYP lookups for the two integration sections. The Web API calls those
+   * products itself and answers only lists, so no credential reaches the browser.
+   */
+  integrationService: IProjectIntegrationService;
+  /**
+   * Opens the project's Audits page, offered by the ED Controls section once the project is
+   * saved and linked. Absent (add mode, or a role that may not manage audits): no button.
+   */
+  onOpenAudits?: () => void;
   /**
    * Marketplace SaaS entitlements. The Tender and Minutes of Meeting sections are paid
    * services (`TENDER.CORE`, `MINUTES.CORE`) and render through a `FeatureGate`.

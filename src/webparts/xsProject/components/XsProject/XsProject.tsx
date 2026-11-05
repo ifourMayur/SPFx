@@ -14,7 +14,7 @@ import { ILoginResponse } from '../../../../models/Auth';
 import { IBuildingForm, IProjectFormFeatures, toDomainGroup } from '../../../../models/Building';
 import { IProjectSaveContext, IProjectSaveResult, toProjectSaveContext } from '../../../../models/BuildingSave';
 import { IFolderProvisionFailure, IFolderProvisionResult } from '../../../../models/SharePointFolder';
-import { canAddEditProject, canOpenProjectForm } from '../../../../models/Permissions';
+import { canAddEditProject, canManageAudits, canOpenProjectForm } from '../../../../models/Permissions';
 import { IProjectListingRow } from '../../../../models/ProjectListing';
 import { ISharePointSite } from '../../../../models/SharePointSite';
 import { isSaasReturnFragment } from '../../../../models/Saas';
@@ -65,6 +65,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
       projectService,
       projectListingService,
       lookupService,
+      integrationService,
+      edControlAuditService,
       loginService,
       sharePointSiteService,
       saasService
@@ -107,6 +109,8 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               projectService={projectService}
               projectListingService={projectListingService}
               lookupService={lookupService}
+              integrationService={integrationService}
+              edControlAuditService={edControlAuditService}
               saasService={saasService}
               projectNames={projectNames}
               savedForms={savedForms}
@@ -115,6 +119,7 @@ export default class XsProject extends React.Component<IXsProjectProps, IXsProje
               clientName={login?.userName || userDisplayName}
               canAddEdit={canAddEditProject(userRoleId)}
               canOpenForm={canOpenProjectForm(userRoleId)}
+              canManageAudits={canManageAudits(userRoleId)}
               domainGroup={login?.domainGroup}
               notification={notification}
               siteTitle={selectedSite.title}

@@ -1,6 +1,8 @@
 import { IBuildingService } from '../../../../services/BuildingService';
 import { ILoginService } from '../../../../services/LoginService';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
+import { IEdControlAuditService } from '../../../../services/EdControlAuditService';
 import { IProjectListingService } from '../../../../services/ProjectListingService';
 import { IProjectService } from '../../../../services/ProjectService';
 import { ISaasService } from '../../../../services/SaasService';
@@ -29,6 +31,10 @@ export interface IXsProjectProps {
   buildingService: IBuildingService;
   /** Reference data for the project form's dropdowns, passed down to `ProjectAddEdit`. */
   lookupService: ILookupService;
+  /** The project form's ED Controls and KYP lookups, passed down to `ProjectAddEdit`. */
+  integrationService: IProjectIntegrationService;
+  /** A project's ED Controls audits, passed down to the Audits page. */
+  edControlAuditService: IEdControlAuditService;
   /** Passed on to the `Login` component, which runs the sign-in handshake. */
   loginService: ILoginService;
   /**

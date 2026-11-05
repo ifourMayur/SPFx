@@ -3,9 +3,8 @@
  *
  * These cover what a successful TypeScript build cannot: that the form actually mounts,
  * that its dropdowns are filled from the lookup service rather than from anything
- * hard-coded, that validation messages reach the DOM, that the excluded integration
- * sections really are absent, that the paid Tender and Minutes of Meeting sections follow
- * the tenant's entitlements, and that the permission refusal and the load-failure state
+ * hard-coded, that validation messages reach the DOM, that the Audits (ED Controls) and
+ * Planning (KYP) sections appear, that the paid sections follow the tenant's entitlements, and that the permission refusal and the load-failure state
  * render instead of the form.
  *
  * `react-dom/test-utils` and the jsdom environment are already available, so this needs
@@ -20,7 +19,9 @@ import ProjectAddEditRoute from './ProjectAddEditRoute';
 import { IBuildingForm, ILookupOption } from '../../../../models/Building';
 import { ApiError } from '../../../../models/ApiError';
 import { ISaasEntitlements, ISaasServiceStatus } from '../../../../models/Saas';
+import { IEdControlsSettings, IKypSettings } from '../../../../models/ProjectIntegration';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
 import { ISaasService } from '../../../../services/SaasService';
 
 /** Options the stub service hands back, so assertions can look for real names. */
@@ -54,8 +55,31 @@ function stubLookupService(overrides?: Partial<ILookupService>): ILookupService 
   };
 }
 
+/** An integration service; ED Controls and KYP are configured unless told otherwise. */
+function stubIntegrationService(isConfigured: boolean = true): IProjectIntegrationService {
+  return {
+    getEdControlsSettings: async (): Promise<IEdControlsSettings> => ({
+      isConfigured,
+      isTicketSource: false,
+      ticketProjectId: '',
+      tagRows: []
+    }),
+    getEdControlsProjects: async (): Promise<ILookupOption[]> => [{ id: 'db-1', name: 'ED project' }],
+    getEdControlsTags: async (): Promise<string[]> => [],
+    getKypSettings: async (): Promise<IKypSettings> => ({
+      isConfigured,
+      isPlanningSource: false,
+      planningProjectId: '',
+      hasProjectToken: false
+    }),
+    getKypProjects: async (): Promise<ILookupOption[]> => [{ id: 'k-1', name: 'KYP project' }],
+    getMyTickets: async () => [],
+    getMyPlannings: async () => []
+  };
+}
+
 /** Every feature the form gates on. */
-const ALL_FEATURES: string[] = ['TENDER.CORE', 'MINUTES.CORE'];
+const ALL_FEATURES: string[] = ['TENDER.CORE', 'MINUTES.CORE', 'EDCONTROL.CORE', 'KYP.CORE'];
 
 /** A service status as `GET saas/entitlements` reports it. */
 function serviceStatus(serviceKey: string, name: string, status: string): ISaasServiceStatus {
@@ -89,7 +113,9 @@ function stubSaasService(
     features,
     details: [
       serviceStatus('TENDER', 'Tender', features.indexOf('TENDER.CORE') >= 0 ? 'Active' : 'NotPurchased'),
-      serviceStatus('MINUTES', 'Minutes of Meeting', features.indexOf('MINUTES.CORE') >= 0 ? 'Active' : 'NotPurchased')
+      serviceStatus('MINUTES', 'Minutes of Meeting', features.indexOf('MINUTES.CORE') >= 0 ? 'Active' : 'NotPurchased'),
+      serviceStatus('ED_CONTROL', 'ED Control', features.indexOf('EDCONTROL.CORE') >= 0 ? 'Active' : 'NotPurchased'),
+      serviceStatus('KYP', 'Know Your Property', features.indexOf('KYP.CORE') >= 0 ? 'Active' : 'NotPurchased')
     ],
     cacheSeconds: 300,
     evaluatedOn: '2026-11-04T00:00:00Z'
@@ -133,13 +159,16 @@ describe('ProjectAddEdit', () => {
     lookupService: ILookupService = stubLookupService(),
     canSave: boolean = true,
     saasService: ISaasService = stubSaasService(),
-    onOpenSubscription?: (serviceKey: string) => void
+    onOpenSubscription?: (serviceKey: string) => void,
+    integrationService: IProjectIntegrationService = stubIntegrationService()
   ): Promise<void> {
     await act(async () => {
       ReactDOM.render(
         <HashRouter>
           <ProjectAddEditRoute
             lookupService={lookupService}
+            integrationService={integrationService}
+            canManageAudits={true}
             saasService={saasService}
             onOpenSubscription={onOpenSubscription}
             mode="add"
@@ -330,13 +359,65 @@ describe('ProjectAddEdit', () => {
     ]);
   });
 
-  it('does not render the excluded integration sections', async () => {
+  it('renders the Audits (ED Controls) and Planning (KYP) sections, but no SharePoint Site URL', async () => {
     await renderAddForm(async () => undefined);
 
-    expect(host.textContent).not.toContain('EDcontrols');
-    expect(host.textContent).not.toContain('Audits');
-    expect(host.textContent).not.toContain('KYP');
+    expect(host.textContent).toContain('Audits');
+    expect(host.textContent).toContain('ED controls');
+    expect(host.textContent).toContain('Planning');
+    expect(host.textContent).toContain('KYP Project');
     expect(host.textContent).not.toContain('SharePoint');
+  });
+
+  it('says so when ED Controls and KYP are not set up for the organisation', async () => {
+    await renderAddForm(
+      async () => undefined,
+      stubLookupService(),
+      true,
+      stubSaasService(),
+      undefined,
+      stubIntegrationService(false)
+    );
+
+    expect(host.textContent).toContain('ED Controls is not set up for your organisation.');
+    expect(host.textContent).toContain('KYP is not set up for your organisation.');
+  });
+
+  it('saves the ED Controls link chosen while adding, and requires its project', async () => {
+    const saved: IBuildingForm[] = [];
+    await renderAddForm(async (form: IBuildingForm): Promise<void> => {
+      saved.push(form);
+    });
+
+    setValue('#project-buildingName', 'Linked');
+    setValue('#project-address', 'Damrak 2');
+    setValue('#project-postcode', '1012 LP');
+    const toggles: HTMLInputElement[] = Array.prototype.slice.call(host.querySelectorAll('input[type="checkbox"]'));
+    const edToggle: HTMLInputElement = toggles.filter(
+      (input: HTMLInputElement) => (input.closest('label')?.textContent || '').indexOf('ED controls') >= 0
+    )[0];
+    await act(async () => {
+      edToggle.click();
+    });
+
+    const form: HTMLFormElement = host.querySelector('form') as HTMLFormElement;
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(saved).toHaveLength(0);
+    expect(host.textContent).toContain('Please select a project');
+
+    const select: HTMLSelectElement = host.querySelector('#project-edControls-ticketProjectId') as HTMLSelectElement;
+    await act(async () => {
+      select.value = 'db-1';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    expect(saved[0].edControls).toEqual({ isTicketSource: true, ticketProjectId: 'db-1', tagRows: [] });
+    expect(saved[0].kyp && saved[0].kyp.isPlanningSource).toBe(false);
   });
 
   it('blocks an empty save and shows the required-field messages', async () => {

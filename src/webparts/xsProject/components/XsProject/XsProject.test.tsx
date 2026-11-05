@@ -34,6 +34,8 @@ import type { ISharePointSite } from '../../../../models/SharePointSite';
 import type { IBuildingService } from '../../../../services/BuildingService';
 import type { ILoginService } from '../../../../services/LoginService';
 import type { ILookupService } from '../../../../services/LookupService';
+import type { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
+import type { IEdControlAuditService } from '../../../../services/EdControlAuditService';
 import type { IProjectListingService } from '../../../../services/ProjectListingService';
 import type { IProjectService } from '../../../../services/ProjectService';
 import type { ISharePointSiteService } from '../../../../services/SharePointSiteService';
@@ -271,6 +273,19 @@ function flakySiteService(): ISharePointSiteService {
  * they did before they were gated. The gating itself is covered by `FeatureGate.test.tsx`
  * and `ProjectAddEdit.test.tsx`.
  */
+/** ED Controls and KYP not configured: their sections only say so. */
+function stubIntegrationService(): IProjectIntegrationService {
+  return {
+    getEdControlsSettings: async () => ({ isConfigured: false, isTicketSource: false, ticketProjectId: '', tagRows: [] }),
+    getEdControlsProjects: async () => [],
+    getEdControlsTags: async () => [],
+    getKypSettings: async () => ({ isConfigured: false, isPlanningSource: false, planningProjectId: '', hasProjectToken: false }),
+    getKypProjects: async () => [],
+    getMyTickets: async () => [],
+    getMyPlannings: async () => []
+  };
+}
+
 function stubSaasService(): ISaasService {
   const entitlements: ISaasEntitlements = {
     tenantKnown: true,
@@ -328,6 +343,8 @@ function stubServices(
   projectListingService: IProjectListingService;
   buildingService: IBuildingService;
   lookupService: ILookupService;
+  integrationService: IProjectIntegrationService;
+  edControlAuditService: IEdControlAuditService;
   sharePointSiteService: ISharePointSiteService;
   saasService: ISaasService;
 } {
@@ -336,6 +353,8 @@ function stubServices(
 
   return {
     lookupService: stubLookupService(),
+    integrationService: stubIntegrationService(),
+    edControlAuditService: {} as IEdControlAuditService,
     projectListingService: stubListingService(store),
     buildingService: stubBuildingService(store),
     sharePointSiteService: siteService || stubSiteService(),
@@ -389,6 +408,8 @@ describe('XsProject', () => {
           projectListingService={services.projectListingService}
           buildingService={services.buildingService}
           lookupService={services.lookupService}
+          integrationService={services.integrationService}
+          edControlAuditService={services.edControlAuditService}
           loginService={services.loginService}
           sharePointSiteService={services.sharePointSiteService}
           saasService={services.saasService}

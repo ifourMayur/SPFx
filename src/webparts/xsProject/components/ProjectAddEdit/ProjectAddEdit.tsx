@@ -3,6 +3,8 @@ import * as React from 'react';
 import styles from './ProjectAddEdit.module.scss';
 import type { IProjectAddEditProps } from './IProjectAddEditProps';
 import type { IProjectAddEditState } from './IProjectAddEditState';
+import EdControlsSection from './EdControlsSection';
+import KypPlanningSection from './KypPlanningSection';
 import FeatureGate from '../FeatureGate/FeatureGate';
 import FolderCascade from '../FolderCascade/FolderCascade';
 import MultiSelect from '../MultiSelect/MultiSelect';
@@ -22,6 +24,7 @@ import {
   createEmptyFolderLevelOptions
 } from '../../../../models/FolderTree';
 import { getErrorMessage } from '../../../../models/ApiError';
+import { IEdControlsForm, IKypForm } from '../../../../models/ProjectIntegration';
 import { SAAS_FEATURE_KEYS, SAAS_SERVICE_KEYS } from '../../../../models/Saas';
 
 /**
@@ -65,14 +68,18 @@ const IMAGE_MESSAGES = {
  * offered, Project Template is editable), present means edit (Reset is hidden, Project
  * Template is locked - `@if (Model.Id > 0)` in the reference).
  *
- * The ED Controls / Audits and KYP Planning sections are deliberately not ported: they
- * are third-party integration features, out of scope for the core project form. The
- * SharePoint Site URL field is out of scope for the same reason - the reference only shows
- * it when server-side SharePoint credentials are configured, which the browser cannot see.
+ * The Audits (ED Controls) and Planning (KYP) sections are `EdControlsSection` and
+ * `KypPlanningSection`. Each loads the project's stored settings from the Web API itself and
+ * reports them through `onLoaded`; until then the form holds no value for it and the save
+ * echoes what the project already stores. ED Controls and KYP are only ever called by the
+ * Web API, so no third-party credential reaches the browser. The SharePoint Site URL field
+ * is not ported - the reference only shows it when server-side SharePoint credentials are
+ * configured, which the browser cannot see.
  *
- * Tender and Minutes of Meeting are paid Marketplace services, so both sections render
- * through a `FeatureGate` (`TENDER.CORE`, `MINUTES.CORE`): their headings stay, and their
- * controls are replaced by a locked panel when the tenant is not entitled. Only the
+ * ED Control, KYP, Tender and Minutes of Meeting are paid Marketplace services, so their
+ * sections render through a `FeatureGate` (`EDCONTROL.CORE`, `KYP.CORE`, `TENDER.CORE`,
+ * `MINUTES.CORE`): their headings stay, and their controls are replaced by a locked panel
+ * when the tenant is not entitled. Only the
  * controls are hidden - the form values are left as they are, so an edit never silently
  * switches off a tender the project already has. The Web API enforces the entitlement on
  * the Tender/MOM endpoints themselves.
@@ -92,6 +99,10 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
 
   /** Form to restore when Reset is pressed. */
   private readonly _initialForm: IBuildingForm;
+
+  /** What the integration sections loaded, which Reset restores alongside `_initialForm`. */
+  private _loadedEdControls: IEdControlsForm | undefined;
+  private _loadedKyp: IKypForm | undefined;
 
   public constructor(props: IProjectAddEditProps) {
     super(props);
@@ -191,6 +202,7 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
         <form className={styles.panel} onSubmit={this._onSubmit} noValidate>
           {this._renderImageUpload()}
           {this._renderCoreFields()}
+          {this._renderIntegrations()}
           {this._renderSettingsAndTender()}
           {this._renderMinutesOfMeeting()}
 
@@ -455,6 +467,66 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     );
   }
 
+  /** Audits (ED Controls) and Planning (KYP), in the reference's order: after the core fields. */
+  private _renderIntegrations(): React.ReactElement {
+    const { form, errors, isSaving, lookups } = this.state;
+
+    return (
+      <>
+        <div className={styles.momSection}>
+          <div className={styles.sectionLabel}>Audits</div>
+          <hr className={styles.sectionRule} />
+
+          <FeatureGate
+            saasService={this.props.saasService}
+            featureKey={SAAS_FEATURE_KEYS.edControl}
+            serviceKey={SAAS_SERVICE_KEYS.edControl}
+            serviceName="ED Control"
+            onEnableService={this.props.onOpenSubscription}
+          >
+            <EdControlsSection
+              projectId={form.id}
+              integrationService={this.props.integrationService}
+              lookupService={this.props.lookupService}
+              suppliers={lookups.suppliers}
+              isGrandChildFolderEnabled={this.props.features.isGrandChildFolderEnabled}
+              value={form.edControls}
+              ticketProjectError={errors.ticketProjectId}
+              tagRowErrors={errors.tagRows}
+              isDisabled={isSaving}
+              onLoaded={this._onEdControlsLoaded}
+              onOpenAudits={this.props.onOpenAudits}
+              onChange={this._onEdControlsChange}
+            />
+          </FeatureGate>
+        </div>
+
+        <div className={styles.momSection}>
+          <div className={styles.sectionLabel}>Planning</div>
+          <hr className={styles.sectionRule} />
+
+          <FeatureGate
+            saasService={this.props.saasService}
+            featureKey={SAAS_FEATURE_KEYS.kyp}
+            serviceKey={SAAS_SERVICE_KEYS.kyp}
+            serviceName="Know Your Property"
+            onEnableService={this.props.onOpenSubscription}
+          >
+            <KypPlanningSection
+              projectId={form.id}
+              integrationService={this.props.integrationService}
+              value={form.kyp}
+              planningProjectError={errors.planningProjectId}
+              isDisabled={isSaving}
+              onLoaded={this._onKypLoaded}
+              onChange={this._onKypChange}
+            />
+          </FeatureGate>
+        </div>
+      </>
+    );
+  }
+
   private _renderSettingsAndTender(): React.ReactElement {
     const { features } = this.props;
     const { form, errors } = this.state;
@@ -567,7 +639,7 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     options?: { isRequired?: boolean; type?: string }
   ): React.ReactElement {
     const { errors, form, isSaving } = this.state;
-    const message: string | undefined = errors[field as keyof IBuildingFormErrors];
+    const message: string | undefined = errors[field as Exclude<keyof IBuildingFormErrors, 'tagRows'>];
     const inputId: string = `project-${field}`;
 
     return (
@@ -727,6 +799,24 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     );
   };
 
+  private _onEdControlsLoaded = (edControls: IEdControlsForm): void => {
+    this._loadedEdControls = edControls;
+    this._setFormValue('edControls', edControls);
+  };
+
+  private _onEdControlsChange = (edControls: IEdControlsForm): void => {
+    this._setFormValue('edControls', edControls);
+  };
+
+  private _onKypLoaded = (kyp: IKypForm): void => {
+    this._loadedKyp = kyp;
+    this._setFormValue('kyp', kyp);
+  };
+
+  private _onKypChange = (kyp: IKypForm): void => {
+    this._setFormValue('kyp', kyp);
+  };
+
   private _onMomSupplierChange = (supplierId: string): void => {
     this._setFormValue('momFolder', { ...this.state.form.momFolder, supplierId });
   };
@@ -792,7 +882,11 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
    * the hosting SharePoint page with it - so the initial state is restored instead.
    */
   private _onReset = (): void => {
-    this.setState({ form: { ...this._initialForm }, errors: {}, saveError: undefined });
+    this.setState({
+      form: { ...this._initialForm, edControls: this._loadedEdControls, kyp: this._loadedKyp },
+      errors: {},
+      saveError: undefined
+    });
   };
 
   private _onSubmit = (event: React.FormEvent<HTMLFormElement>): void => {

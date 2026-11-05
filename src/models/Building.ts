@@ -11,6 +11,8 @@
  * resource strings ("City", "Contact person", "Function", "Phone Number").
  */
 
+import type { IEdControlsForm, IKypForm, ITagRowErrors } from './ProjectIntegration';
+
 /**
  * Tenant grouping the reference keeps in session as `domainGroup`, matching
  * `DomainGroupEnum`. Drives the two server-side `@if` gates that survive into this form:
@@ -64,8 +66,10 @@ export interface IFolderSelection {
  * `id` is `0` in add mode and the project's identifier in edit mode, mirroring how the
  * Web API's single `POST api/Building` endpoint distinguishes an insert from an update.
  *
- * ED Controls (tag rows, ticket source) and KYP planning are deliberately absent: they are
- * third-party integration sections, excluded from this screen.
+ * ED Controls (`edControls`) and KYP planning (`kyp`) are optional: each is filled in by its
+ * section once that section has loaded the project's stored values from the Web API. While
+ * absent - not loaded, not entitled, or not configured for the account - the save echoes what
+ * the project already stores. See `models/ProjectIntegration.ts`.
  */
 export interface IBuildingForm {
   id: number;
@@ -99,6 +103,10 @@ export interface IBuildingForm {
   /** "Save minutes in this folder" - reveals {@link momFolder}. */
   isAddMomPdf: boolean;
   momFolder: IFolderSelection;
+  /** ED Controls link and tag rows; absent until the section has loaded them. */
+  edControls?: IEdControlsForm;
+  /** KYP planning link and alternative token; absent until the section has loaded them. */
+  kyp?: IKypForm;
 }
 
 /**
@@ -126,6 +134,12 @@ export interface IBuildingFormErrors {
   email?: string;
   telefoon?: string;
   tenderTemplateId?: string;
+  /** ED Controls project, required while the ED Controls toggle is on. */
+  ticketProjectId?: string;
+  /** KYP project, required while the KYP toggle is on. */
+  planningProjectId?: string;
+  /** Tag row messages, keyed by `ITagRow.key`; absent when every row is fine. */
+  tagRows?: { [key: string]: ITagRowErrors };
 }
 
 /** An empty folder path, used for a new form and to clear the MOM cascade. */

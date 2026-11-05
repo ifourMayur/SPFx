@@ -61,6 +61,8 @@ export default class XsProjectWebPart extends BaseClientSideWebPart<IXsProjectWe
         projectListingService: services.projectListingService,
         buildingService: services.buildingService,
         lookupService: services.lookupService,
+        integrationService: services.integrationService,
+        edControlAuditService: services.edControlAuditService,
         loginService: services.loginService,
         sharePointSiteService: services.sharePointSiteService,
         saasService: services.saasService

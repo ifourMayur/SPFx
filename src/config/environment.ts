@@ -49,6 +49,10 @@ const ENDPOINTS: IApiEndpoints = {
   document: 'Document',
   dashboard: 'Dashboard',
   folder: 'Folder',
+  edControls: 'EDControls',
+  kyp: 'KYP',
+  edControlAudit: 'EDControlAudit',
+  contact: 'Contact',
   saas: 'saas'
 };
 

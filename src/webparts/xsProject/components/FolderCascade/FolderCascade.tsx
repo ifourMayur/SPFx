@@ -52,9 +52,11 @@ export default class FolderCascade extends React.Component<IFolderCascadeProps> 
           {isGrandChildFolderEnabled && this._renderLevel('subSubSubFolderId')}
         </div>
 
-        <div className={styles.row}>
-          {this._renderSupplier()}
-        </div>
+        {!this.props.hideSupplier && (
+          <div className={styles.row}>
+            {this._renderSupplier()}
+          </div>
+        )}
       </div>
     );
   }

@@ -22,6 +22,7 @@
  */
 
 import { IBuildingForm, IBuildingFormErrors, IProjectFormFeatures } from './Building';
+import { INTEGRATION_MESSAGES, ITagRowErrors, validateTagRows } from './ProjectIntegration';
 
 /**
  * Message text, taken verbatim from the reference's resource files so a ported screen
@@ -100,6 +101,20 @@ export function validateBuildingForm(
 
   if (form.isEnableTender && isBlank(form.tenderTemplateId)) {
     errors.tenderTemplateId = VALIDATION_MESSAGES.tenderTemplateRequired;
+  }
+
+  if (form.edControls && form.edControls.isTicketSource) {
+    if (isBlank(form.edControls.ticketProjectId)) {
+      errors.ticketProjectId = INTEGRATION_MESSAGES.ticketProjectRequired;
+    }
+    const tagRows: { [key: string]: ITagRowErrors } = validateTagRows(form.edControls.tagRows, false);
+    if (Object.keys(tagRows).length > 0) {
+      errors.tagRows = tagRows;
+    }
+  }
+
+  if (form.kyp && form.kyp.isPlanningSource && isBlank(form.kyp.planningProjectId)) {
+    errors.planningProjectId = INTEGRATION_MESSAGES.planningProjectRequired;
   }
 
   // No MOM rule on purpose: `getAllMOMData` collects the row without ever setting its

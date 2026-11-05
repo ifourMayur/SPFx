@@ -1,0 +1,286 @@
+/*
+ * The project Audits page (`Audits`, `AuditManager`, `AuditForm`). Shares the project form's
+ * look: the field, button and message rules below are the same as `ProjectAddEdit.module.scss`.
+ */
+
+.audits {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+  font-size: 14px;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75em;
+  margin-bottom: 1em;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.5em;
+  font-weight: 600;
+}
+
+.projectName {
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.subTitle {
+  margin: 0 0 0.75em 0;
+  font-size: 1.15em;
+  font-weight: 600;
+}
+
+/* `panel panel-default > panel-body` in the reference. */
+.panel {
+  padding: 1em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+.notice {
+  margin-bottom: 1em;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:themePrimary, default: #0078d4]";
+  background-color: "[theme:themeLighterAlt, default: #eff6fc]";
+}
+
+.accessDenied {
+  padding: 1.5em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+}
+
+/* One `row formProject`: two fields side by side, stacking on a narrow web part. */
+.row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1.5em;
+  margin-bottom: 0.75em;
+
+  @media (max-width: 640px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.field {
+  min-width: 0;
+  margin-bottom: 0.75em;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25em;
+}
+
+.required {
+  color: "[theme:redDark, default: #a4262c]";
+  font-weight: 600;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+
+  &:focus {
+    outline: 1px solid "[theme:themePrimary, default: #0078d4]";
+    border-color: "[theme:themePrimary, default: #0078d4]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+    color: "[theme:neutralSecondary, default: #605e5c]";
+    cursor: not-allowed;
+  }
+}
+
+.inputInvalid {
+  border-color: "[theme:redDark, default: #a4262c]";
+}
+
+/* `<span class="text-danger">` */
+.fieldError {
+  display: block;
+  margin-top: 0.25em;
+  color: "[theme:redDark, default: #a4262c]";
+  font-size: 0.875em;
+}
+
+.formError {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  border-left: 4px solid "[theme:redDark, default: #a4262c]";
+  background-color: "[theme:neutralLighterAlt, default: #faf9f8]";
+  color: "[theme:redDark, default: #a4262c]";
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75em;
+  margin-top: 1em;
+}
+
+.primaryButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background-color: "[theme:themePrimary, default: #0078d4]";
+  color: "[theme:white, default: #ffffff]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:themeDark, default: #005a9e]";
+  }
+
+  &:disabled {
+    background-color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+.secondaryButton {
+  min-height: 32px;
+  padding: 0 1.25em;
+  border: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-radius: 2px;
+  background-color: "[theme:white, default: #ffffff]";
+  color: "[theme:bodyText, default: #323130]";
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background-color: "[theme:neutralLighter, default: #f3f2f1]";
+  }
+
+  &:disabled {
+    color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+/* Shown while the dropdown data is being fetched, in place of the form. */
+.loadingState {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 1.5em 0;
+  justify-content: center;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+  border-top-color: "[theme:themePrimary, default: #0078d4]";
+  border-radius: 50%;
+  animation: auditsSpin 0.8s linear infinite;
+}
+
+/* Distinguishes "the API returned no options" from "this control is broken". */
+.emptyHint {
+  display: block;
+  margin-top: 0.25em;
+  color: "[theme:neutralSecondary, default: #605e5c]";
+  font-size: 0.875em;
+  font-style: italic;
+}
+
+@keyframes auditsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75em;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 0.5em;
+    border-bottom: 1px solid "[theme:neutralQuaternaryAlt, default: #dadada]";
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    font-weight: 600;
+  }
+}
+
+/* A button that reads as a link: the reference's "Duplicate | Delete" row actions. */
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: "[theme:themePrimary, default: #0078d4]";
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:disabled {
+    color: "[theme:neutralTertiary, default: #a19f9d]";
+    cursor: not-allowed;
+  }
+}
+
+.separator {
+  margin: 0 0.5em;
+}
+
+/* Red until the completed report is filed, green afterwards - the reference's badges. */
+.badgeWaiting,
+.badgeCompleted {
+  display: inline-block;
+  padding: 0.1em 0.6em;
+  border-radius: 10px;
+  color: "[theme:white, default: #ffffff]";
+  font-size: 0.85em;
+}
+
+.badgeWaiting {
+  background-color: "[theme:redDark, default: #a4262c]";
+}
+
+.badgeCompleted {
+  background-color: "[theme:green, default: #107c10]";
+}
+
+.confirm {
+  margin-top: 0.5em;
+}

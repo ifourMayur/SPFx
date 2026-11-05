@@ -36,4 +36,9 @@ export interface IFolderCascadeProps {
   loadingLevels?: FolderLevel[];
   /** Disables every dropdown, for example while the form is saving. */
   isDisabled?: boolean;
+  /**
+   * Leaves the supplier dropdown out, for a form that places its own supplier (the audit
+   * form, whose contact list follows the supplier). Defaults to `false`.
+   */
+  hideSupplier?: boolean;
 }

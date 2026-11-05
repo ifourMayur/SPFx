@@ -8,6 +8,8 @@ import { ApiService, IApiService, IResolvedApiConfiguration, resolveApiConfigura
 import { BuildingService, IBuildingService } from './BuildingService';
 import { ILoginService, LoginService } from './LoginService';
 import { ILookupService, LookupService } from './LookupService';
+import { IProjectIntegrationService, ProjectIntegrationService } from './ProjectIntegrationService';
+import { EdControlAuditService, IEdControlAuditService } from './EdControlAuditService';
 import { IProjectListingService, ProjectListingService } from './ProjectListingService';
 import { IProjectService, ProjectService } from './ProjectService';
 import { DocumentStorageService, IDocumentStorageService } from './DocumentStorageService';
@@ -39,6 +41,13 @@ export interface IServiceContainer {
   readonly documentStorageService: IDocumentStorageService;
   /** Reference data the project form binds its dropdowns to. */
   readonly lookupService: ILookupService;
+  /**
+   * The project form's ED Controls and KYP lookups (`api/EDControls`, `api/KYP`). The Web
+   * API calls those products itself, so no credential reaches the browser.
+   */
+  readonly integrationService: IProjectIntegrationService;
+  /** A project's ED Controls audits (`api/EDControlAudit`) - the Audits page. */
+  readonly edControlAuditService: IEdControlAuditService;
   /**
    * The SharePoint sites the user may work in, read from SharePoint itself rather than
    * from the XSProject Web API.
@@ -150,6 +159,8 @@ export class ServiceFactory {
         getEnvironment().api.endpoints.building
       ),
       lookupService: new LookupService(apiService),
+      integrationService: new ProjectIntegrationService(apiService),
+      edControlAuditService: new EdControlAuditService(apiService),
       // Talks to SharePoint, not to the Web API, so it takes the SharePoint transport and
       // the current site - whose `_api` endpoint the tenant-wide search query is addressed
       // to.

@@ -3,13 +3,18 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
 import ProjectAddEdit from './ProjectAddEdit';
 import { IBuildingForm, IProjectFormFeatures } from '../../../../models/Building';
-import { ROUTE_PATHS } from '../../../../models/Navigation';
+import { ROUTE_PATHS, projectAuditsPath } from '../../../../models/Navigation';
 import { ILookupService } from '../../../../services/LookupService';
+import { IProjectIntegrationService } from '../../../../services/ProjectIntegrationService';
 import { ISaasService } from '../../../../services/SaasService';
 
 export interface IProjectAddEditRouteProps {
   /** Reference data for the form's dropdowns. */
   lookupService: ILookupService;
+  /** The ED Controls and KYP sections' lookups. */
+  integrationService: IProjectIntegrationService;
+  /** Offers "Manage audits" on a saved, ED Controls-linked project (`canManageAudits`). */
+  canManageAudits: boolean;
   /** Entitlements behind the form's gated Tender and Minutes of Meeting sections. */
   saasService: ISaasService;
   /** Opens the Subscription page on a service - offered to admins by a locked section. */
@@ -58,6 +63,12 @@ export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): R
     navigate(ROUTE_PATHS.projectList);
   }, [navigate]);
 
+  const goToAudits = React.useCallback((): void => {
+    if (projectId !== undefined) {
+      navigate(projectAuditsPath(projectId));
+    }
+  }, [navigate, projectId]);
+
   const saveThenReturn = React.useCallback(
     async (form: IBuildingForm): Promise<void> => {
       await onSave(form);
@@ -76,6 +87,8 @@ export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): R
   return (
     <ProjectAddEdit
       lookupService={props.lookupService}
+      integrationService={props.integrationService}
+      onOpenAudits={props.canManageAudits && projectId !== undefined ? goToAudits : undefined}
       saasService={props.saasService}
       onOpenSubscription={props.onOpenSubscription}
       // Remounts on a switch between add and edit, or between two projects, so the form

@@ -139,7 +139,7 @@ export interface ISaasPurchaseIntent {
 /**
  * A Marketplace subscription's status, in Microsoft's own words (`SaasSubscriptionStatus`
  * on the server). `PendingFulfillmentStart` - bought but not activated yet, so nothing is
- * billed or unlocked until a tenant admin activates it.
+ * billed or unlocked until it is activated (automatically, on the return from the Marketplace).
  */
 export type SaasSubscriptionStatus = 'NotStarted' | 'PendingFulfillmentStart' | 'Subscribed' | 'Suspended' | 'Unsubscribed';
 
@@ -437,7 +437,7 @@ export function findServiceStatus(
 
 const STATUS_LABELS: { [status: string]: string } = {
   Active: 'Active',
-  Pending: 'Activation pending',
+  Pending: 'Not activated',
   Suspended: 'Suspended',
   Inactive: 'Inactive',
   NotPurchased: 'Not enabled',
@@ -502,19 +502,6 @@ export function getSubscriptionStatusLabel(status: string): string {
 /** Badge colour for a Marketplace subscription's status. */
 export function getSubscriptionStatusTone(status: string): SaasTone {
   return SUBSCRIPTION_STATUS_TONES[status] || 'neutral';
-}
-
-/**
- * Whether to offer "Activate" for a subscription: it was bought but never activated
- * (`PendingFulfillmentStart` - a purchase started outside SPFx, such as "Configure account"
- * in the Microsoft 365 admin center, or an activation that failed) and the caller is a
- * tenant admin. The activate endpoint refuses everyone else itself.
- */
-export function canActivateSubscription(
-  subscription: Pick<ISaasSubscription, 'status'>,
-  entitlements: Pick<ISaasEntitlements, 'isTenantAdmin'> | undefined
-): boolean {
-  return !!entitlements && entitlements.isTenantAdmin && subscription.status === 'PendingFulfillmentStart';
 }
 
 /** A date from the wire, or `undefined` when absent or unparseable. */
@@ -582,7 +569,7 @@ export function getServiceStatusMessage(
     case 'Unavailable':
       return `${detail.name} is currently unavailable. Please try again later or contact XSProject support.`;
     case 'Pending':
-      return `${detail.name} has been bought but is not activated yet. A Global Administrator or SharePoint Administrator can activate it on the Subscription page.`;
+      return `${detail.name} was bought but never activated, so it is not billed and cannot be used yet. An administrator can enable it again; the new purchase is activated automatically when you come back from Microsoft Marketplace.`;
     case 'Active':
       if (isExpiringSoon(detail, now)) {
         const end: Date = getServiceEndDate(detail) as Date;

@@ -13,11 +13,9 @@ import {
   ISaasReturnQuery,
   ISaasServiceRow,
   ISaasServiceStatus,
-  ISaasSubscription,
   SAAS_MANAGE_BILLING_URL,
   SaasTone,
   buildPurchaseReturnUrl,
-  canActivateSubscription,
   findServiceStatus,
   formatSaasDate,
   getSaasErrorInfo,
@@ -26,7 +24,6 @@ import {
   getServiceStatusTone,
   getSourceLabel,
   getSubscriptionStatusLabel,
-  getSubscriptionStatusTone,
   isActivationSuccessful,
   isRetryableSaasError,
   isSafeOfferUrl,
@@ -43,8 +40,10 @@ const TONE_CLASSES: { [tone in SaasTone]: string } = {
 
 /**
  * The Subscription page (`/subscription`): which Microsoft Marketplace services the
- * organisation has, its Marketplace subscriptions, and - for admins - enabling a service
- * and activating what was bought.
+ * organisation has and - for admins - enabling a service. The individual Marketplace
+ * subscriptions are not listed (owner decision 2026-11-06).
+ * What was bought is activated automatically on the return from the Marketplace; there is
+ * no manual Activate step.
  *
  * Every service row is a catalog service merged with the server's status for this tenant
  * (`mergeServiceRows`). The page always asks the server afresh on load rather than using
@@ -64,9 +63,10 @@ const TONE_CLASSES: { [tone in SaasTone]: string } = {
  * entitlements, which the service also writes into its cache, so every `FeatureGate`
  * unlocks at once. A return without `subscriptionId` (browser Back, a cancelled checkout)
  * activates nothing. A subscription still awaiting activation - bought outside SPFx, or an
- * activation that failed - is listed with an "Activate" button for tenant admins, which
- * calls the same endpoint. The query is removed once read, so a reload doesn't activate
- * again.
+ * activation that failed - shows only as the service's "Not activated" status, with Enable
+ * still offered to admins (the server keeps `canPurchase` for it: Microsoft does not bill a
+ * subscription that was never activated); a platform admin can also retry it on the admin site. The query is removed once read, so a
+ * reload doesn't activate again.
  *
  * Who may buy or activate is decided by the server (`isTenantAdmin`, `canPurchase`);
  * everyone else sees the same page read-only. Hiding a button is a convenience - the
@@ -80,7 +80,7 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
   public constructor(props: ISubscriptionProps) {
     super(props);
 
-    this.state = { isLoading: true, isRefreshing: false, rows: [], subscriptions: [] };
+    this.state = { isLoading: true, isRefreshing: false, rows: [] };
   }
 
   public componentDidMount(): void {
@@ -213,7 +213,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
           <ul className={styles.list}>{rows.map((row: ISaasServiceRow) => this._renderRow(row, entitlements))}</ul>
         )}
 
-        {this._renderSubscriptions(entitlements)}
       </>
     );
   }
@@ -277,85 +276,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
     );
   }
 
-  /** The tenant's Marketplace subscriptions; nothing at all while there are none to show. */
-  private _renderSubscriptions(entitlements: ISaasEntitlements): React.ReactElement | undefined {
-    const { subscriptions, subscriptionsError } = this.state;
-
-    if (subscriptions.length === 0 && !subscriptionsError) {
-      return undefined;
-    }
-
-    return (
-      <div className={styles.subscriptions}>
-        <h3 className={styles.sectionTitle}>Marketplace subscriptions</h3>
-
-        {subscriptionsError && (
-          <div className={styles.notice} role="status">
-            Your Marketplace subscriptions could not be loaded. {subscriptionsError.message}
-            {subscriptionsError.correlationId && <> Reference: {subscriptionsError.correlationId}</>}
-          </div>
-        )}
-
-        {subscriptions.length > 0 && (
-          <ul className={styles.list}>
-            {subscriptions.map((subscription: ISaasSubscription) => this._renderSubscription(subscription, entitlements))}
-          </ul>
-        )}
-      </div>
-    );
-  }
-
-  private _renderSubscription(subscription: ISaasSubscription, entitlements: ISaasEntitlements): React.ReactElement {
-    const { activatingId, enablingKey, isRefreshing } = this.state;
-    const id: string = subscription.marketplaceSubscriptionId;
-    const tone: SaasTone = getSubscriptionStatusTone(subscription.status);
-    const canActivate: boolean = canActivateSubscription(subscription, entitlements);
-    const isAwaitingActivation: boolean = subscription.status === 'PendingFulfillmentStart';
-
-    return (
-      <li key={id} className={styles.card} data-subscription-id={id}>
-        <div className={styles.cardHeader}>
-          <h4 className={styles.serviceName}>{subscription.subscriptionName || subscription.planName || id}</h4>
-          <span className={`${styles.badge} ${TONE_CLASSES[tone]}`} data-status={subscription.status}>
-            {getSubscriptionStatusLabel(subscription.status)}
-          </span>
-          {subscription.isFreeTrial && <span className={styles.trial}>Free trial</span>}
-        </div>
-
-        <ul className={styles.meta}>
-          <li>Plan: {subscription.planName || subscription.planId}</li>
-          {subscription.services.length > 0 && (
-            <li>Services: {subscription.services.map((key: string) => this._serviceName(key)).join(', ')}</li>
-          )}
-          {subscription.termEnd && (
-            <li>
-              {subscription.autoRenew ? 'Renews on' : 'Term ends on'} {formatSaasDate(subscription.termEnd)}
-            </li>
-          )}
-        </ul>
-
-        {isAwaitingActivation && !entitlements.isTenantAdmin && (
-          <p className={`${styles.message} ${TONE_CLASSES.warning}`}>
-            Bought but not activated yet. A Global Administrator or SharePoint Administrator can
-            activate it on this page.
-          </p>
-        )}
-
-        {canActivate && (
-          <button
-            type="button"
-            className={styles.primaryButton}
-            disabled={!!activatingId || !!enablingKey || isRefreshing}
-            data-subscription-id={id}
-            onClick={this._onActivateClick}
-          >
-            {activatingId === id ? 'Activating…' : 'Activate'}
-          </button>
-        )}
-      </li>
-    );
-  }
-
   private _renderBanner(banner: ActivationBanner): React.ReactElement {
     switch (banner.kind) {
       case 'activating':
@@ -392,8 +312,7 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
       default:
         return (
           <div className={`${styles.banner} ${styles.toneNeutral}`} role="status" data-banner="returned">
-            Welcome back. No completed purchase was reported, so nothing was activated. A service you
-            did buy is listed under Marketplace subscriptions, where an administrator can activate it.
+            Welcome back. No completed purchase was reported, so nothing was activated.
           </div>
         );
     }
@@ -433,17 +352,15 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
   }
 
   /**
-   * Loads the catalog, the subscriptions and - unless an activation has just returned them -
-   * the entitlements (always fresh), in parallel. Only the entitlements are essential:
-   * without the catalog the rows come from the server's per-service details, minus the
-   * plans, and without the subscriptions only their section is missing.
+   * Loads the catalog and - unless an activation has just returned them - the entitlements
+   * (always fresh), in parallel. Only the entitlements are essential: without the catalog
+   * the rows come from the server's per-service details, minus the plans.
    */
   private _load(knownEntitlements?: ISaasEntitlements): void {
     const { saasService } = this.props;
     let catalogError: ISaasErrorInfo | undefined;
 
     this.setState({ isLoading: true, loadError: undefined });
-    this._loadSubscriptions();
 
     const catalogRequest: Promise<void> = saasService.getCatalog().then(
       (catalog: ISaasCatalog): void => {
@@ -472,21 +389,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
     );
   }
 
-  private _loadSubscriptions(): void {
-    this.props.saasService.getSubscriptions().then(
-      (subscriptions: ISaasSubscription[]): void => {
-        if (this._isActive) {
-          this.setState({ subscriptions, subscriptionsError: undefined });
-        }
-      },
-      (error: unknown): void => {
-        if (this._isActive) {
-          this.setState({ subscriptionsError: getSaasErrorInfo(error) });
-        }
-      }
-    );
-  }
-
   private _showEntitlements(entitlements: ISaasEntitlements): void {
     this.setState({ entitlements, rows: mergeServiceRows(this._catalog, entitlements) });
   }
@@ -496,7 +398,7 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
    *
    * On a return the page has not loaded yet, so it loads afterwards - from the entitlements
    * the activation answered, or afresh when it failed. Otherwise the answer's entitlements
-   * replace the rows on screen and the subscriptions are reloaded.
+   * replace the rows on screen.
    */
   private _activate(subscriptionId: string): void {
     this.setState({ activatingId: subscriptionId, banner: { kind: 'activating' }, actionError: undefined });
@@ -510,7 +412,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
         this.setState({ activatingId: undefined, banner: { kind: 'done', result } });
         if (this.state.entitlements) {
           this._showEntitlements(result.entitlements);
-          this._loadSubscriptions();
         } else {
           this._load(result.entitlements);
         }
@@ -539,7 +440,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
 
   private _onRefresh = (): void => {
     this.setState({ isRefreshing: true, actionError: undefined });
-    this._loadSubscriptions();
 
     this.props.saasService.getEntitlements({ refresh: true }).then(
       (entitlements: ISaasEntitlements): void => {
@@ -564,13 +464,6 @@ export default class Subscription extends React.Component<ISubscriptionProps, IS
     const banner: ActivationBanner | undefined = this.state.banner;
     if (banner && banner.kind === 'failed') {
       this._activate(banner.subscriptionId);
-    }
-  };
-
-  private _onActivateClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
-    const subscriptionId: string | undefined = event.currentTarget.dataset.subscriptionId;
-    if (subscriptionId) {
-      this._activate(subscriptionId);
     }
   };
 

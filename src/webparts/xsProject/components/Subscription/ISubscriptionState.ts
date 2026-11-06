@@ -2,8 +2,7 @@ import {
   ISaasActivationResult,
   ISaasEntitlements,
   ISaasErrorInfo,
-  ISaasServiceRow,
-  ISaasSubscription
+  ISaasServiceRow
 } from '../../../../models/Saas';
 
 /**
@@ -29,10 +28,6 @@ export interface ISubscriptionState {
   loadError?: ISaasErrorInfo;
   /** Only the catalog failed - the rows come from the entitlements alone. */
   catalogError?: ISaasErrorInfo;
-  /** The tenant's Marketplace subscriptions. */
-  subscriptions: ISaasSubscription[];
-  /** Only the subscriptions failed - the services are still shown. */
-  subscriptionsError?: ISaasErrorInfo;
   /** The service whose purchase is being started. */
   enablingKey?: string;
   /** Starting a purchase or refreshing failed. */

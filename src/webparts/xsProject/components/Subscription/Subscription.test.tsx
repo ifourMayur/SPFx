@@ -1,6 +1,7 @@
 /**
  * Render tests for the Subscription page: the list, the Enable round trip, activating the
- * purchase on the return from the Marketplace, and the per-subscription Activate button.
+ * purchase automatically on the return from the Marketplace, and the read-only list of
+ * Marketplace subscriptions (no manual Activate).
  *
  * The page's two exits to the browser - reading the current URL and leaving for the
  * Marketplace - are injected props, because jsdom cannot spy on `window.location`.
@@ -43,7 +44,8 @@ function detail(serviceKey: string, name: string, status: string, overrides?: Pa
     termEnd: null,
     isFreeTrial: false,
     autoRenew: null,
-    canPurchase: status === 'NotPurchased' || status === 'Inactive',
+    // As the server decides it: everything but Active can be bought (again).
+    canPurchase: status !== 'Active',
     marketplaceSubscriptionId: null,
     ...overrides
   };
@@ -250,10 +252,6 @@ describe('Subscription', () => {
     return host.querySelector(`li[data-service-key="${serviceKey}"]`) as HTMLElement;
   }
 
-  function subscriptionCard(id: string): HTMLElement {
-    return host.querySelector(`li[data-subscription-id="${id}"]`) as HTMLElement;
-  }
-
   function banner(kind: string): HTMLElement | null {
     return host.querySelector(`[data-banner="${kind}"]`);
   }
@@ -293,6 +291,14 @@ describe('Subscription', () => {
       expect(stub.entitlementCalls).toEqual([{ refresh: true }]);
       expect(stub.activated).toEqual([]);
       expect(cleared).toBe(0);
+    });
+
+    it('offers an admin Enable again for a service bought but never activated', async () => {
+      await render(stubService({ entitlements: [entitlements(true, 'Pending')] }).service);
+
+      expect(card('TENDER').textContent).toContain('Not activated');
+      expect(card('TENDER').textContent).toContain('was bought but never activated');
+      expect(card('TENDER').querySelector('button')?.textContent).toBe('Enable Tender');
     });
 
     it('gives an admin Enable buttons and a Manage billing link that opens in a new tab', async () => {
@@ -424,7 +430,7 @@ describe('Subscription', () => {
       expect(stub.entitlementCalls).toEqual([]);
       expect(card('TENDER').textContent).toContain('Active');
       expect(card('TENDER').className).toContain('highlighted');
-      expect(subscriptionCard(SUBSCRIPTION_ID).textContent).toContain('Active');
+      expect(stub.subscriptionCalls.count).toBe(0);
       expect(cleared).toBe(1);
     });
 
@@ -524,61 +530,31 @@ describe('Subscription', () => {
       subscription(SUBSCRIPTION_ID, 'Subscribed', { termEnd: '2026-12-05T00:00:00Z' })
     ];
 
-    it('offers an admin Activate for a subscription awaiting activation, and activates it', async () => {
+    it.each([
+      ['an admin', true],
+      ['a non-admin', false]
+    ])('are neither loaded nor listed for %s, and nothing is activated on open', async (_who: string, isAdmin: boolean) => {
+      const stub = stubService({ entitlements: [entitlements(isAdmin, 'NotPurchased')], subscriptions: SUBSCRIPTIONS });
+      await render(stub.service);
+
+      expect(host.textContent).not.toContain('Marketplace subscriptions');
+      expect(host.querySelector('li[data-subscription-id]')).toBeNull();
+      expect(host.textContent).not.toContain(PENDING_ID);
+      expect(stub.subscriptionCalls.count).toBe(0);
+      // Opening the page never activates anything - only a Marketplace return does.
+      expect(stub.activated).toEqual([]);
+    });
+
+    it('are not reloaded by Refresh', async () => {
       const stub = stubService({
-        entitlements: [entitlements(true, 'NotPurchased')],
-        activations: [activation('Activated', entitlements(true, 'Active'))],
+        entitlements: [entitlements(true, 'NotPurchased'), entitlements(true, 'NotPurchased')],
         subscriptions: SUBSCRIPTIONS
       });
       await render(stub.service);
 
-      expect(subscriptionCard(PENDING_ID).textContent).toContain('Awaiting activation');
-      expect(subscriptionCard(SUBSCRIPTION_ID).querySelector('button')).toBeNull();
-      expect(stub.subscriptionCalls.count).toBe(1);
+      await click(button('Refresh'));
 
-      await click(button('Activate', subscriptionCard(PENDING_ID)));
-
-      expect(stub.activated).toEqual([PENDING_ID]);
-      expect(banner('activated')?.textContent).toContain('Tender is active.');
-      expect(card('TENDER').textContent).toContain('Active');
-      // The rows come from the answer; only the subscriptions are read again.
-      expect(stub.entitlementCalls).toHaveLength(1);
-      expect(stub.subscriptionCalls.count).toBe(2);
-    });
-
-    it('does not offer Activate to a non-admin, and says who can', async () => {
-      await render(stubService({ entitlements: [entitlements(false, 'NotPurchased')], subscriptions: SUBSCRIPTIONS }).service);
-
-      expect(host.querySelectorAll('li[data-subscription-id] button')).toHaveLength(0);
-      expect(subscriptionCard(PENDING_ID).textContent).toContain('Bought but not activated yet');
-    });
-
-    it('disables every action while an activation runs', async () => {
-      const held = deferred<ISaasActivationResult>();
-      const stub = stubService({
-        entitlements: [entitlements(true, 'NotPurchased')],
-        activations: [held.promise],
-        subscriptions: SUBSCRIPTIONS
-      });
-      await render(stub.service);
-
-      await click(button('Activate', subscriptionCard(PENDING_ID)));
-
-      expect(button('Activating…').disabled).toBe(true);
-      expect(button('Refresh').disabled).toBe(true);
-      expect(button('Enable Tender').disabled).toBe(true);
-
-      await act(async () => {
-        held.resolve(activation('Activated', entitlements(true, 'Active')));
-        await flush();
-      });
-
-      expect(button('Refresh').disabled).toBe(false);
-    });
-
-    it('shows nothing of the section while there are no subscriptions', async () => {
-      await render(stubService({ entitlements: [entitlements(true, 'NotPurchased')] }).service);
-
+      expect(stub.subscriptionCalls.count).toBe(0);
       expect(host.textContent).not.toContain('Marketplace subscriptions');
     });
   });

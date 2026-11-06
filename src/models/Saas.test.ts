@@ -5,7 +5,6 @@ import {
   ISaasEntitlements,
   ISaasServiceStatus,
   buildPurchaseReturnUrl,
-  canActivateSubscription,
   findServiceStatus,
   getSaasErrorInfo,
   getServiceEndDate,
@@ -148,7 +147,7 @@ describe('findServiceStatus', () => {
 describe('status presentation', () => {
   it.each([
     ['Active', 'Active', 'success'],
-    ['Pending', 'Activation pending', 'warning'],
+    ['Pending', 'Not activated', 'warning'],
     ['Suspended', 'Suspended', 'error'],
     ['Inactive', 'Inactive', 'neutral'],
     ['NotPurchased', 'Not enabled', 'neutral'],
@@ -203,7 +202,8 @@ describe('getServiceStatusMessage', () => {
   it('explains inactive, unavailable and pending services', () => {
     expect(getServiceStatusMessage(status({ status: 'Inactive' }), NOW)).toContain('cancelled or has ended');
     expect(getServiceStatusMessage(status({ status: 'Unavailable' }), NOW)).toContain('currently unavailable');
-    expect(getServiceStatusMessage(status({ status: 'Pending' }), NOW)).toContain('not activated yet');
+    expect(getServiceStatusMessage(status({ status: 'Pending' }), NOW)).toContain('bought but never activated');
+    expect(getServiceStatusMessage(status({ status: 'Pending' }), NOW)).toContain('enable it again');
   });
 
   it('warns about an expiring service and is silent about a healthy one', () => {
@@ -456,18 +456,6 @@ describe('subscription presentation', () => {
   it('shows an unknown status as the server wrote it', () => {
     expect(getSubscriptionStatusLabel('Frozen')).toBe('Frozen');
     expect(getSubscriptionStatusTone('Frozen')).toBe('neutral');
-  });
-});
-
-describe('canActivateSubscription', () => {
-  it('offers Activate only to a tenant admin, only for a subscription awaiting activation', () => {
-    const admin = { isTenantAdmin: true };
-
-    expect(canActivateSubscription({ status: 'PendingFulfillmentStart' }, admin)).toBe(true);
-    expect(canActivateSubscription({ status: 'PendingFulfillmentStart' }, { isTenantAdmin: false })).toBe(false);
-    expect(canActivateSubscription({ status: 'PendingFulfillmentStart' }, undefined)).toBe(false);
-    expect(canActivateSubscription({ status: 'Subscribed' }, admin)).toBe(false);
-    expect(canActivateSubscription({ status: 'Suspended' }, admin)).toBe(false);
   });
 });
 

@@ -16,6 +16,13 @@ export interface IFeatureGateProps {
    * locked panel explains but offers no button.
    */
   onEnableService?: (serviceKey: string) => void;
+  /**
+   * Render nothing at all - no "checking" state, no locked panel - unless the feature is
+   * enabled. For a section that should simply not exist for a tenant without the service
+   * (its heading goes inside the gate). A failed check still shows its error and Retry, so
+   * a network blip is not mistaken for a missing subscription.
+   */
+  hideWhenLocked?: boolean;
   /** The paid feature, rendered only while the server reports it enabled. */
   children?: React.ReactNode;
 }

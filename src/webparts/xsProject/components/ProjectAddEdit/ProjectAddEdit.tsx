@@ -78,9 +78,9 @@ const IMAGE_MESSAGES = {
  *
  * ED Control, KYP, Tender and Minutes of Meeting are paid Marketplace services, so their
  * sections render through a `FeatureGate` (`EDCONTROL.CORE`, `KYP.CORE`, `TENDER.CORE`,
- * `MINUTES.CORE`): their headings stay, and their controls are replaced by a locked panel
- * when the tenant is not entitled. Only the
- * controls are hidden - the form values are left as they are, so an edit never silently
+ * `MINUTES.CORE`) with `hideWhenLocked`: when the tenant is not entitled the whole section,
+ * heading included, is left out of the form (admins enable services on the Subscription
+ * page). Only the controls are hidden - the form values are left as they are, so an edit never silently
  * switches off a tender the project already has. The Web API enforces the entitlement on
  * the Tender/MOM endpoints themselves.
  *
@@ -473,17 +473,17 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
 
     return (
       <>
-        <div className={styles.momSection}>
-          <div className={styles.sectionLabel}>Audits</div>
-          <hr className={styles.sectionRule} />
+        <FeatureGate
+          saasService={this.props.saasService}
+          featureKey={SAAS_FEATURE_KEYS.edControl}
+          serviceKey={SAAS_SERVICE_KEYS.edControl}
+          serviceName="ED Control"
+          hideWhenLocked={true}
+        >
+          <div className={styles.momSection}>
+            <div className={styles.sectionLabel}>Audits</div>
+            <hr className={styles.sectionRule} />
 
-          <FeatureGate
-            saasService={this.props.saasService}
-            featureKey={SAAS_FEATURE_KEYS.edControl}
-            serviceKey={SAAS_SERVICE_KEYS.edControl}
-            serviceName="ED Control"
-            onEnableService={this.props.onOpenSubscription}
-          >
             <EdControlsSection
               projectId={form.id}
               integrationService={this.props.integrationService}
@@ -498,20 +498,20 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
               onOpenAudits={this.props.onOpenAudits}
               onChange={this._onEdControlsChange}
             />
-          </FeatureGate>
-        </div>
+          </div>
+        </FeatureGate>
 
-        <div className={styles.momSection}>
-          <div className={styles.sectionLabel}>Planning</div>
-          <hr className={styles.sectionRule} />
+        <FeatureGate
+          saasService={this.props.saasService}
+          featureKey={SAAS_FEATURE_KEYS.kyp}
+          serviceKey={SAAS_SERVICE_KEYS.kyp}
+          serviceName="Know Your Property"
+          hideWhenLocked={true}
+        >
+          <div className={styles.momSection}>
+            <div className={styles.sectionLabel}>Planning</div>
+            <hr className={styles.sectionRule} />
 
-          <FeatureGate
-            saasService={this.props.saasService}
-            featureKey={SAAS_FEATURE_KEYS.kyp}
-            serviceKey={SAAS_SERVICE_KEYS.kyp}
-            serviceName="Know Your Property"
-            onEnableService={this.props.onOpenSubscription}
-          >
             <KypPlanningSection
               projectId={form.id}
               integrationService={this.props.integrationService}
@@ -521,8 +521,8 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
               onLoaded={this._onKypLoaded}
               onChange={this._onKypChange}
             />
-          </FeatureGate>
-        </div>
+          </div>
+        </FeatureGate>
       </>
     );
   }
@@ -545,17 +545,17 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
           </div>
         </div>
 
-        <div className={styles.field}>
-          <div className={styles.sectionLabel}>Tender</div>
-          <hr className={styles.sectionRule} />
+        <FeatureGate
+          saasService={this.props.saasService}
+          featureKey={SAAS_FEATURE_KEYS.tender}
+          serviceKey={SAAS_SERVICE_KEYS.tender}
+          serviceName="Tender"
+          hideWhenLocked={true}
+        >
+          <div className={styles.field}>
+            <div className={styles.sectionLabel}>Tender</div>
+            <hr className={styles.sectionRule} />
 
-          <FeatureGate
-            saasService={this.props.saasService}
-            featureKey={SAAS_FEATURE_KEYS.tender}
-            serviceKey={SAAS_SERVICE_KEYS.tender}
-            serviceName="Tender"
-            onEnableService={this.props.onOpenSubscription}
-          >
             <div className={styles.toggleRow}>
               {this._renderToggle('isEnableTender', 'Tender')}
             </div>
@@ -588,8 +588,8 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
                 )}
               </div>
             )}
-          </FeatureGate>
-        </div>
+          </div>
+        </FeatureGate>
       </div>
     );
   }
@@ -598,17 +598,17 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
     const { form } = this.state;
 
     return (
-      <div className={styles.momSection}>
-        <div className={styles.sectionLabel}>Minutes of Meeting</div>
-        <hr className={styles.sectionRule} />
+      <FeatureGate
+        saasService={this.props.saasService}
+        featureKey={SAAS_FEATURE_KEYS.minutes}
+        serviceKey={SAAS_SERVICE_KEYS.minutes}
+        serviceName="Minutes of Meeting"
+        hideWhenLocked={true}
+      >
+        <div className={styles.momSection}>
+          <div className={styles.sectionLabel}>Minutes of Meeting</div>
+          <hr className={styles.sectionRule} />
 
-        <FeatureGate
-          saasService={this.props.saasService}
-          featureKey={SAAS_FEATURE_KEYS.minutes}
-          serviceKey={SAAS_SERVICE_KEYS.minutes}
-          serviceName="Minutes of Meeting"
-          onEnableService={this.props.onOpenSubscription}
-        >
           <div className={styles.toggleRow}>
             {this._renderToggle('isAddMomPdf', 'Save minutes in this folder')}
           </div>
@@ -627,8 +627,8 @@ export default class ProjectAddEdit extends React.Component<IProjectAddEditProps
               onSupplierChange={this._onMomSupplierChange}
             />
           )}
-        </FeatureGate>
-      </div>
+        </div>
+      </FeatureGate>
     );
   }
 

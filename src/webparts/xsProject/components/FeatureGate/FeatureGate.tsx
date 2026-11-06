@@ -26,7 +26,8 @@ import {
  *
  * The children render only when `GET saas/entitlements` lists `featureKey`. Otherwise a
  * locked panel says why: an admin gets "Enable {service}" (to the Subscription page),
- * anyone else "Contact your administrator". **This is UX, not security** - the Web API
+ * anyone else "Contact your administrator" - or, with `hideWhenLocked`, nothing at all.
+ * **This is UX, not security** - the Web API
  * refuses the same feature on its own gated endpoints whatever this shows.
  *
  * It fails **closed**: while loading, and when the check itself fails, the feature stays
@@ -64,10 +65,13 @@ export default class FeatureGate extends React.Component<IFeatureGateProps, IFea
   }
 
   public render(): React.ReactNode {
-    const { featureKey, children } = this.props;
+    const { featureKey, children, hideWhenLocked } = this.props;
     const { phase, entitlements } = this.state;
 
     if (phase === 'loading') {
+      if (hideWhenLocked) {
+        return null;
+      }
       return (
         <div className={styles.checking} role="status" aria-live="polite" data-feature-gate={featureKey}>
           <span className={styles.spinner} aria-hidden="true" />
@@ -84,7 +88,7 @@ export default class FeatureGate extends React.Component<IFeatureGateProps, IFea
       return <>{children}</>;
     }
 
-    return this._renderLocked(entitlements);
+    return hideWhenLocked ? null : this._renderLocked(entitlements);
   }
 
   private _renderError(): React.ReactElement {

@@ -81,7 +81,7 @@ describe('FeatureGate', () => {
   });
 
   /** The one render call, so it pairs with the unmount in `afterEach`. */
-  function mount(service: ISaasService, onEnableService?: (serviceKey: string) => void): void {
+  function mount(service: ISaasService, onEnableService?: (serviceKey: string) => void, hideWhenLocked?: boolean): void {
     ReactDOM.render(
       <FeatureGate
         saasService={service}
@@ -89,6 +89,7 @@ describe('FeatureGate', () => {
         serviceKey="TENDER"
         serviceName="Tender"
         onEnableService={onEnableService}
+        hideWhenLocked={hideWhenLocked}
       >
         <div id="paid">Paid feature</div>
       </FeatureGate>,
@@ -96,9 +97,13 @@ describe('FeatureGate', () => {
     );
   }
 
-  async function render(service: ISaasService, onEnableService?: (serviceKey: string) => void): Promise<void> {
+  async function render(
+    service: ISaasService,
+    onEnableService?: (serviceKey: string) => void,
+    hideWhenLocked?: boolean
+  ): Promise<void> {
     await act(async () => {
-      mount(service, onEnableService);
+      mount(service, onEnableService, hideWhenLocked);
     });
   }
 
@@ -165,6 +170,40 @@ describe('FeatureGate', () => {
 
     expect(host.textContent).toContain('currently unavailable');
     expect(host.querySelector('button')).toBeNull();
+  });
+
+  describe('hideWhenLocked', () => {
+    it('renders nothing while loading', () => {
+      const never: ISaasService = {
+        ...stubService([entitlements([], true)]),
+        getEntitlements: () => new Promise<ISaasEntitlements>(() => undefined)
+      };
+
+      act(() => {
+        mount(never, undefined, true);
+      });
+
+      expect(host.innerHTML).toBe('');
+    });
+
+    it('renders nothing when locked, not even "Enable" for an admin', async () => {
+      await render(stubService([entitlements([], true)]), () => undefined, true);
+
+      expect(host.innerHTML).toBe('');
+    });
+
+    it('still renders the children when the feature is enabled', async () => {
+      await render(stubService([entitlements(['TENDER.CORE'], false, 'Active')]), undefined, true);
+
+      expect(host.querySelector('#paid')).not.toBeNull();
+    });
+
+    it('still says so, with a Retry, when the check fails', async () => {
+      await render(stubService([new ApiError('Service Unavailable', { status: 503 })]), undefined, true);
+
+      expect(host.textContent).toContain("We couldn't check your subscription, so Tender is hidden for now.");
+      expect(host.textContent).toContain('Retry');
+    });
   });
 
   it('fails closed with the reason and reference when the check fails, and recovers on Retry', async () => {

@@ -4,8 +4,9 @@
  * These cover what a successful TypeScript build cannot: that the form actually mounts,
  * that its dropdowns are filled from the lookup service rather than from anything
  * hard-coded, that validation messages reach the DOM, that the Audits (ED Controls) and
- * Planning (KYP) sections appear, that the paid sections follow the tenant's entitlements, and that the permission refusal and the load-failure state
- * render instead of the form.
+ * Planning (KYP) sections appear, that the paid sections follow the tenant's entitlements
+ * (and are left out entirely without them), and that the permission refusal and the
+ * load-failure state render instead of the form.
  *
  * `react-dom/test-utils` and the jsdom environment are already available, so this needs
  * no new dependency. Every `ReactDOM.render` here is unmounted in `afterEach`.
@@ -159,7 +160,6 @@ describe('ProjectAddEdit', () => {
     lookupService: ILookupService = stubLookupService(),
     canSave: boolean = true,
     saasService: ISaasService = stubSaasService(),
-    onOpenSubscription?: (serviceKey: string) => void,
     integrationService: IProjectIntegrationService = stubIntegrationService()
   ): Promise<void> {
     await act(async () => {
@@ -170,7 +170,6 @@ describe('ProjectAddEdit', () => {
             integrationService={integrationService}
             canManageAudits={true}
             saasService={saasService}
-            onOpenSubscription={onOpenSubscription}
             mode="add"
             projectNames={{}}
             savedForms={{}}
@@ -375,7 +374,6 @@ describe('ProjectAddEdit', () => {
       stubLookupService(),
       true,
       stubSaasService(),
-      undefined,
       stubIntegrationService(false)
     );
 
@@ -544,48 +542,44 @@ describe('ProjectAddEdit', () => {
       expect(host.querySelector('[data-feature-gate]')).toBeNull();
     });
 
-    it('locks both sections for a tenant without them and tells a non-admin to ask an admin', async () => {
+    it('leaves every paid section out, heading included, for a tenant without them', async () => {
       await renderAddForm(async () => undefined, stubLookupService(), true, stubSaasService([], false));
 
       expect(host.querySelector('input[data-field="isEnableTender"]')).toBeNull();
       expect(host.querySelector('input[data-field="isAddMomPdf"]')).toBeNull();
-      // The headings stay, so the user can see what exists.
-      expect(host.textContent).toContain('Minutes of Meeting');
-      expect(host.textContent).toContain('Contact your administrator to enable Tender.');
-      expect(host.textContent).toContain('Contact your administrator to enable Minutes of Meeting.');
-      expect(host.textContent).not.toContain('Enable Tender');
+      expect(host.textContent).not.toContain('Audits');
+      expect(host.textContent).not.toContain('ED controls');
+      expect(host.textContent).not.toContain('Planning');
+      expect(host.textContent).not.toContain('Tender');
+      expect(host.textContent).not.toContain('Minutes of Meeting');
+      // No locked panel, no "checking" state, no administrator hint.
+      expect(host.querySelector('[data-feature-gate]')).toBeNull();
+      expect(host.textContent).not.toContain('not enabled for your organisation');
       // The rest of the form is unaffected.
       expect(host.querySelector('#project-buildingName')).not.toBeNull();
+      expect(host.textContent).toContain('Project Settings');
     });
 
     it('gates each section on its own feature key', async () => {
-      await renderAddForm(async () => undefined, stubLookupService(), true, stubSaasService(['MINUTES.CORE']));
+      await renderAddForm(
+        async () => undefined,
+        stubLookupService(),
+        true,
+        stubSaasService(['MINUTES.CORE', 'KYP.CORE'])
+      );
 
       expect(host.querySelector('input[data-field="isEnableTender"]')).toBeNull();
       expect(host.querySelector('input[data-field="isAddMomPdf"]')).not.toBeNull();
+      expect(host.textContent).toContain('Planning');
+      expect(host.textContent).not.toContain('Audits');
     });
 
-    it('offers an admin "Enable Tender", which opens the Subscription page without submitting', async () => {
-      const opened: string[] = [];
-      const saved: IBuildingForm[] = [];
+    it('offers no "Enable" button even to an admin - services are enabled on the Subscription page', async () => {
+      await renderAddForm(async () => undefined, stubLookupService(), true, stubSaasService(['MINUTES.CORE'], true));
 
-      await renderAddForm(
-        async (form: IBuildingForm): Promise<void> => {
-          saved.push(form);
-        },
-        stubLookupService(),
-        true,
-        stubSaasService(['MINUTES.CORE'], true),
-        (serviceKey: string): void => {
-          opened.push(serviceKey);
-        }
-      );
-
-      expect(host.textContent).not.toContain('Contact your administrator');
-      await clickText('Enable Tender');
-
-      expect(opened).toEqual(['TENDER']);
-      expect(saved).toHaveLength(0);
+      expect(host.textContent).not.toContain('Enable Tender');
+      expect(host.textContent).not.toContain('Tender');
+      expect(host.querySelector('input[data-field="isAddMomPdf"]')).not.toBeNull();
     });
 
     it('hides the paid sections, says why and offers a retry when the check fails', async () => {

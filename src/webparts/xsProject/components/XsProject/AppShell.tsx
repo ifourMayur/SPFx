@@ -134,7 +134,6 @@ export default function AppShell(props: IAppShellProps): React.ReactElement {
       integrationService={props.integrationService}
       canManageAudits={props.canManageAudits}
       saasService={props.saasService}
-      onOpenSubscription={goToSubscription}
       mode={mode}
       projectNames={props.projectNames}
       savedForms={props.savedForms}

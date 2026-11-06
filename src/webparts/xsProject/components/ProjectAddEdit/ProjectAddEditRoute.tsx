@@ -15,10 +15,8 @@ export interface IProjectAddEditRouteProps {
   integrationService: IProjectIntegrationService;
   /** Offers "Manage audits" on a saved, ED Controls-linked project (`canManageAudits`). */
   canManageAudits: boolean;
-  /** Entitlements behind the form's gated Tender and Minutes of Meeting sections. */
+  /** Entitlements behind the form's paid sections (Audits, Planning, Tender, Minutes of Meeting). */
   saasService: ISaasService;
-  /** Opens the Subscription page on a service - offered to admins by a locked section. */
-  onOpenSubscription?: (serviceKey: string) => void;
   /** `add` serves `/projects/add`; `edit` serves `/projects/edit/:id`. */
   mode: 'add' | 'edit';
   /**
@@ -90,7 +88,6 @@ export default function ProjectAddEditRoute(props: IProjectAddEditRouteProps): R
       integrationService={props.integrationService}
       onOpenAudits={props.canManageAudits && projectId !== undefined ? goToAudits : undefined}
       saasService={props.saasService}
-      onOpenSubscription={props.onOpenSubscription}
       // Remounts on a switch between add and edit, or between two projects, so the form
       // rebuilds its initial state instead of showing the previous project's values.
       key={`${mode}-${projectId || 0}`}
